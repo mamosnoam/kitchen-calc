@@ -136,7 +136,7 @@ button { cursor: pointer; }
 
 /* Field (a button, never an <input>) */
 .field {
-  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: var(--fld);
+  position: relative; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 2px; min-height: var(--fld);
   padding: 4px 10px; background: var(--surface); border: 2px solid var(--line); border-radius: 14px; color: var(--ink); text-align: start;
 }
 .flabel { display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; color: var(--ink-2); line-height: 1.2; }

@@ -1,6 +1,6 @@
 // חובה להעלות את VERSION בכל שינוי בקבצי האתר.
 // אחרת טלפונים שכבר פתחו את האפליקציה יישארו עם הגרסה הישנה.
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const SCOPE = self.registration.scope;            // e.g. https://user.github.io/kitchen-calc/
 const PREFIX = 'kitchen-calc|' + SCOPE + '|';     // never touch caches of other sites on github.io

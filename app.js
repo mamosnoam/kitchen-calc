@@ -87,7 +87,7 @@ const ui = {
   origin: null,      // X value when its editing started
   undo: null,        // { text, fn } shown in the strip until replaced
   err: null, errTimer: 0,
-  pendingField: null, pendingKey: null,
+  pendingField: null, pendingKey: null, leavingRead: false,
   inAppNav: false, shieldUntil: 0,
 };
 const els = {};
@@ -281,6 +281,7 @@ function updateStrip() {
     }
     return;
   }
+  if (needsX()) { strip.classList.add('mode-need'); text.textContent = 'חסר X – לחצו על X והקלידו'; return; }
   if (ui.undo) {
     strip.classList.add('mode-msg');
     text.textContent = ui.undo.text;
@@ -289,7 +290,6 @@ function updateStrip() {
     btn.onclick = runUndo;
     return;
   }
-  if (needsX()) { strip.classList.add('mode-need'); text.textContent = 'חסר X – לחצו על X והקלידו'; return; }
   if (!f) { text.textContent = ''; return; }
   const v = valueOf(f);
   const name = FIELD_NAME[f];
@@ -367,11 +367,12 @@ function resetX(f) {
   ui.active = null;
   if (def !== old) setUndo(`${X_NAME[f]} חזר ל-${lri(def)}`, () => setX(key, old));
   activate(KINDS[kind()].xOf[f]);
+  shield(); // the same button turns into "ביטול": a double tap must not undo at once
 }
 
 function setUndo(text, fn) { ui.undo = { text, fn }; }
 function runUndo() {
-  if (!ui.undo) return;
+  if (!ui.undo || shielded()) return;
   const { fn } = ui.undo;
   ui.undo = null;
   fn();
@@ -404,6 +405,7 @@ function press(k) {
   if (isX(f)) ui.draft = r.value; else { inputs()[f] = r.value; save(); }
   ui.fresh = r.fresh;
   ui.err = null;
+  ui.undo = null; // "ביטול" is offered only until the next number is typed
   update();
 }
 
@@ -471,19 +473,20 @@ function setMode(m) {
 
 function goType(field, key) {
   if (ui.mode !== 'read') { activate(field); return; }
+  if (ui.leavingRead) { if (key) ui.pendingKey = (ui.pendingKey || '') + key; return; }
   ui.pendingField = field;
   ui.pendingKey = key || null;
-  if (history.state && history.state.read) history.back();
+  if (history.state && history.state.read) { ui.leavingRead = true; shield(); history.back(); }
   else { setMode('type'); afterType(); }
 }
 
 function afterType() {
   const f = ui.pendingField || entryField();
-  const k = ui.pendingKey;
+  const keys = ui.pendingKey || '';
   ui.pendingField = ui.pendingKey = null;
   ui.active = null;
   activate(f);
-  if (k) press(k);
+  for (const k of keys) press(k);
 }
 
 function enterCalc(name) {
@@ -494,6 +497,7 @@ function enterCalc(name) {
   els.body = $('.calc-body', els.content);
   els.content.scrollTop = 0;
   ui.active = null; ui.undo = null; ui.err = null; ui.draft = null; ui.fresh = false;
+  hideToast(); // a toast would cover the bottom row of the keypad
   wake.want = true;
   lockOn();
 }
@@ -501,10 +505,13 @@ function enterCalc(name) {
 function leaveCalc() {
   if (ui.active) { if (isX(ui.active)) discardDraft(); else commit(ui.active); }
   ui.active = null; ui.undo = null; ui.err = null;
+  ui.pendingField = ui.pendingKey = null; ui.leavingRead = false;
   wake.want = false;
   lockOff();
   clearTimeout(wake.idle);
 }
+
+const isScreen = (name) => Object.prototype.hasOwnProperty.call(SCREENS, name);
 
 function showScreen(name) {
   const calcOn = !!SCREENS[name];
@@ -514,9 +521,10 @@ function showScreen(name) {
 }
 
 function route() {
+  ui.leavingRead = false;
   const name = location.hash.replace(/^#\/?/, '') || 'home';
-  const target = SCREENS[name] || SHEETS.includes(name) ? name : 'home';
-  const mode = SCREENS[target] && history.state && history.state.read ? 'read' : 'type';
+  const target = isScreen(name) || SHEETS.includes(name) ? name : 'home';
+  const mode = isScreen(target) && history.state && history.state.read ? 'read' : 'type';
   const prev = ui.route;
   if (target === prev && (!SCREENS[target] || mode === ui.mode)) return;
   if (SCREENS[prev] && target !== prev) leaveCalc();
@@ -537,9 +545,10 @@ function route() {
   }
 }
 
-function nav(name) { ui.inAppNav = true; location.hash = '#/' + name; }
+function nav(name) { ui.inAppNav = true; shield(); location.hash = '#/' + name; }
 
 function goHome() {
+  shield();
   if (ui.inAppNav) {
     if (SCREENS[ui.route] && ui.mode === 'read' && history.state && history.state.read) history.go(-2);
     else history.back();
@@ -550,6 +559,7 @@ function goHome() {
 }
 
 function closeSheet() {
+  shield();
   if (ui.inAppNav) history.back();
   else { history.replaceState(null, '', location.pathname + location.search); route(); }
 }
@@ -670,12 +680,15 @@ function doInstall() {
 
 const appLink = () => new URL('./', location.href).href;
 
+let sharing = false;
 function shareApp() {
   const url = appLink();
   if (navigator.share) {
-    navigator.share({ title: 'מחשבון מטבח', text: SHARE_TEXT, url }).catch((e) => {
-      if (!e || e.name !== 'AbortError') nav('share');
-    });
+    if (sharing) return; // the share sheet is already opening
+    sharing = true;
+    navigator.share({ title: 'מחשבון מטבח', text: SHARE_TEXT, url })
+      .catch((e) => { if (!e || (e.name !== 'AbortError' && e.name !== 'InvalidStateError')) nav('share'); })
+      .finally(() => { sharing = false; });
     return;
   }
   nav('share');
@@ -711,6 +724,12 @@ function toast(text, undoFn, ms) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, ms || (undoFn ? 8000 : 4000));
 }
+function hideToast() { $('#toast').hidden = true; clearTimeout(toastTimer); }
+function refreshScreen() {
+  if (kind()) update();
+  else if (ui.route === 'home') renderHome();
+  else if (ui.route === 'help') renderHelp();
+}
 
 // ---------- Reset all ----------
 function doReset() {
@@ -718,7 +737,7 @@ function doReset() {
   state = freshState();
   save();
   renderHelp();
-  toast('הכול אופס לערכים המקוריים', () => { state = JSON.parse(snap); save(); renderHelp(); }, 8000);
+  toast('הכול אופס לערכים המקוריים', () => { state = JSON.parse(snap); save(); refreshScreen(); }, 8000);
 }
 
 // ---------- Keep the screen on ----------
@@ -802,6 +821,11 @@ function bind() {
   addEventListener('popstate', route);
   addEventListener('hashchange', route);
 
+  // Double-tap guard: for 0.4 s after a screen change, taps on the new screen are ignored
+  document.addEventListener('click', (e) => {
+    if (e.detail > 0 && shielded()) { e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+
   $('#tiles').addEventListener('click', (e) => {
     const t = e.target.closest('.tile');
     if (!t || shielded()) return;
@@ -823,9 +847,11 @@ function bind() {
   $('#backBtn').addEventListener('click', goHome);
   $('#editBtn').addEventListener('click', () => { if (!shielded()) goType(entryField()); });
 
-  // Keypad: a key fires when the finger lifts inside the same key (sliding off cancels)
+  // Keypad: a key fires when the finger lifts on (or within 16 px of) the key it touched; sliding farther cancels
   const keypad = $('.keypad');
   const downs = new Map();
+  const SLOP = 16;
+  let lastPtrPress = 0;
   keypad.addEventListener('pointerdown', (e) => {
     const key = e.target.closest('.key');
     if (!key || shielded()) return;
@@ -839,7 +865,10 @@ function bind() {
     downs.delete(e.pointerId);
     key.classList.remove('down');
     const r = key.getBoundingClientRect();
-    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) press(key.dataset.k);
+    if (e.clientX >= r.left - SLOP && e.clientX <= r.right + SLOP && e.clientY >= r.top - SLOP && e.clientY <= r.bottom + SLOP) {
+      lastPtrPress = performance.now();
+      press(key.dataset.k);
+    }
   });
   keypad.addEventListener('pointercancel', (e) => {
     const key = downs.get(e.pointerId);
@@ -847,7 +876,8 @@ function bind() {
   });
   keypad.addEventListener('click', (e) => {
     const key = e.target.closest('.key');
-    if (key && e.detail === 0) press(key.dataset.k); // keyboard / assistive technology activation
+    // keyboard / assistive technology activation (but not the extra click some screen readers send after a touch)
+    if (key && e.detail === 0 && performance.now() - lastPtrPress > 600) press(key.dataset.k);
   });
   keypad.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -870,7 +900,7 @@ function bind() {
     if (!k) return;
     if (ui.mode === 'read' && !/^[0-9.]$/.test(k)) return;
     e.preventDefault();
-    if (k === 'clear') { if (ui.active) { if (isX(ui.active)) ui.draft = ''; else { inputs()[ui.active] = ''; save(); } ui.fresh = false; update(); } }
+    if (k === 'clear') { if (ui.active) { if (isX(ui.active)) ui.draft = ''; else { inputs()[ui.active] = ''; save(); } ui.fresh = false; ui.undo = null; update(); } }
     else if (k === 'esc') escape();
     else if (k === 'next') cycle(1);
     else if (k === 'prev') cycle(-1);
