@@ -47,14 +47,14 @@
 
 ## פרטיות, נגישות ותנאי שימוש
 
-אין שרת, אין הרשמה ואין איסוף מידע. המספרים וערכי ה-X נשמרים רק בטלפון שלכם.
+אין הרשמה ואין איסוף מידע. המספרים וערכי ה-X נשמרים רק בטלפון שלכם. האתר עצמו מאוחסן ב-GitHub Pages.
 
 - [הצהרת נגישות](https://mamosnoam.github.io/kitchen-calc/#/accessibility)
 - [מדיניות פרטיות](https://mamosnoam.github.io/kitchen-calc/#/privacy)
 - [תנאי שימוש](https://mamosnoam.github.io/kitchen-calc/#/terms)
 
 המחשבון הוא כלי עזר. לפני חיתוך או קידוח בודקים את המידות ואת ערכי X.
-פניות בנושא נגישות: [דף הפניות של המאגר](https://github.com/mamosnoam/kitchen-calc/issues).
+פניות בנושא נגישות: [דף הפניות (Issues) של המאגר](https://github.com/mamosnoam/kitchen-calc/issues) (דורש חשבון GitHub, והפנייה גלויה לכולם).
 
 © 2026 mNm services
 

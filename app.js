@@ -91,7 +91,7 @@ let state = load();
 const ui = {
   route: '', active: null, fresh: false, before: '', keypad: false,
   sheet: false, xActive: null, xFresh: false, xDraft: {}, xOrigin: {},
-  inAppNav: false, shieldUntil: 0, msgTimer: 0,
+  inAppNav: false, shieldUntil: 0, msgTimer: 0, xMsgTimer: 0,
   forward: false, focusBack: {}, booted: false,
 };
 const els = {};
@@ -150,16 +150,15 @@ const fitHTML = '<span class="fit"><span class="big num"></span></span>';
 function outletHTML() {
   const block = (d) => {
     const word = d === 'h' ? 'גובה' : 'רוחב';
+    const plus = `<div class="res" data-r="${d}Plus"><span class="sg p" aria-hidden="true">+</span><span class="sr">${word} ועוד X:</span>${fitHTML}</div>`;
+    const minus = `<div class="res" data-r="${d}Minus"><span class="sg m" aria-hidden="true">−</span><span class="sr">${word} פחות X:</span>${fitHTML}</div>`;
     return `<section class="block" data-d="${d}">
       <div class="blk-top"><span class="lbl">${word}</span>${inpHTML(d)}</div>
-      <div class="results">
-        <div class="res" data-r="${d}Plus"><span class="sg p" aria-hidden="true">+</span><span class="sr">${word} ועוד X:</span>${fitHTML}</div>
-        <div class="res" data-r="${d}Minus"><span class="sg m" aria-hidden="true">−</span><span class="sr">${word} פחות X:</span>${fitHTML}</div>
-      </div>
+      <div class="results">${state.resOrder === 'minus' ? minus + plus : plus + minus}</div>
       <p class="blk-note" data-note="${d}" hidden></p>
     </section>`;
   };
-  return `<div class="calc-body outlet">${block('h')}${block('w')}</div>`;
+  return `<div class="calc-body outlet">${state.dimOrder === 'wh' ? block('w') + block('h') : block('h') + block('w')}</div>`;
 }
 function handlesHTML() {
   return `<div class="calc-body handles"><section class="block">
@@ -215,8 +214,6 @@ function needsX() { return xFields().some((f) => xCurrent(f) === ''); }
 function update() {
   if (!kind() || !els.body) return;
   const k = kind();
-  els.body.classList.toggle('wh', state.dimOrder === 'wh');
-  els.body.classList.toggle('minus-first', state.resOrder === 'minus');
   for (const btn of $$('.inp', els.body)) {
     const f = btn.dataset.f;
     const v = inputs()[f];
@@ -226,6 +223,7 @@ function update() {
     btn.classList.toggle('is-fresh', active && ui.fresh && v !== '');
     btn.classList.toggle('is-empty', v === '');
     btn.setAttribute('aria-label', `${FIELD_NAME[f]}: ${v || 'ריק'}`);
+    if (active) btn.setAttribute('aria-current', 'true'); else btn.removeAttribute('aria-current');
   }
   const inp = inputs();
   const longest = [];
@@ -259,23 +257,23 @@ function update() {
 }
 
 // ---------- Screen reader: read the results shortly after typing ----------
-let liveTimer = 0;
+let sayTimer = 0, announceTimer = 0;
 function say(text) {
-  clearTimeout(liveTimer);
+  clearTimeout(sayTimer);
   const el = $('#live');
   el.textContent = '';
-  if (text) liveTimer = setTimeout(() => { el.textContent = text; }, 60);
+  if (text) sayTimer = setTimeout(() => { el.textContent = text; }, 60);
 }
 function announceSoon() {
-  clearTimeout(liveTimer);
-  liveTimer = setTimeout(() => say(resultText()), 900);
+  clearTimeout(announceTimer);
+  const route = ui.route, f = ui.active;
+  announceTimer = setTimeout(() => { if (ui.route === route) say(resultText(f)); }, 900);
 }
-function resultText() {
+function resultText(f) {
   if (!kind() || !els.body) return '';
   let scope = els.body;
-  if (kind() === 'outlet') scope = $(`.block[data-d="${ui.active === 'w' ? 'w' : 'h'}"]`, els.body);
-  let list = $$('.res', scope);
-  if (kind() === 'outlet' && state.resOrder === 'minus') list = list.reverse();
+  if (kind() === 'outlet') scope = $(`.block[data-d="${f === 'w' ? 'w' : 'h'}"]`, els.body);
+  const list = $$('.res', scope);
   const parts = list.filter((r) => !r.classList.contains('is-empty'))
     .map((r) => `${($('.sr', r) || $('.cap', r)).textContent.replace(/:$/, '')} ${$('.big', r).textContent}`);
   const notes = $$('.blk-note', scope).filter((n) => !n.hidden).map((n) => n.textContent.trim());
@@ -354,7 +352,9 @@ function press(k) {
   if (ui.sheet) { xPress(k); return; }
   if (!ui.keypad || !ui.active) {
     if (!/^[0-9.]$/.test(k)) return;
-    openField(order()[0]);
+    const cur = document.activeElement;
+    const focusedField = cur && cur.classList.contains('inp') && els.body.contains(cur) ? cur.dataset.f : null;
+    openField(focusedField || order()[0]);
   }
   if (k === 'act') { action(); return; }
   const f = ui.active;
@@ -417,6 +417,7 @@ function openXSheet() {
     if (ui.active) commit(ui.active);
     ui.active = null; ui.keypad = false;
     els.calc.classList.remove('kp-open');
+    showKpMsg('');
   }
   ui.sheet = true;
   ui.xDraft = {}; ui.xOrigin = {};
@@ -457,10 +458,10 @@ function renderXSheet() {
 
 function xHint(msg) {
   const h = $('#xHint');
-  clearTimeout(ui.msgTimer);
+  clearTimeout(ui.xMsgTimer);
   h.classList.toggle('err', !!msg);
   h.textContent = msg || 'נשמר בטלפון עד שמשנים שוב';
-  if (msg) { say(msg); ui.msgTimer = setTimeout(() => xHint(''), 2000); }
+  if (msg) { say(msg); ui.xMsgTimer = setTimeout(() => xHint(''), 2000); }
 }
 
 function xPress(k) {
@@ -561,6 +562,8 @@ function leaveCalc() {
   wake.want = false;
   lockOff();
   clearTimeout(wake.idle);
+  clearTimeout(announceTimer);
+  showKpMsg('');
 }
 
 function showScreen(name) {

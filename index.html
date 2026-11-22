@@ -79,9 +79,9 @@
     </header>
     <main class="content home-content">
       <p class="status" id="status" hidden><i class="sdot"></i><span id="statusText"></span></p>
-      <p class="sec">שקעים</p>
+      <h2 class="sec">שקעים</h2>
       <nav class="tiles grid3" id="tilesOutlets" aria-label="שקעים"></nav>
-      <p class="sec">ארונות</p>
+      <h2 class="sec">ארונות</h2>
       <nav class="tiles grid2" id="tilesCabinets" aria-label="ארונות"></nav>
     </main>
     <aside class="install-bar" id="installCard" aria-label="הוספה למסך הבית" hidden>
@@ -113,7 +113,7 @@
       <span class="ibtn-space"></span>
     </header>
     <main class="content page-content">
-      <p class="sec">תצוגה</p>
+      <h2 class="sec">תצוגה</h2>
       <div class="group">
         <div class="set-row stack"><span>ערכת נושא</span>
           <div class="seg" id="segTheme" role="radiogroup" aria-label="ערכת נושא">
@@ -131,14 +131,14 @@
         <p class="set-note" id="awakeNote" hidden>הטלפון הזה לא מאפשר להשאיר את המסך דולק.</p>
       </div>
 
-      <p class="sec">התקנה ושיתוף</p>
+      <h2 class="sec">התקנה ושיתוף</h2>
       <div class="group">
         <button type="button" class="set-row link" data-act="install" id="setInstallBtn"><span>הוספה למסך הבית</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
         <p class="set-row" id="setInstalled" hidden><span>המחשבון כבר במסך הבית ✓</span></p>
         <button type="button" class="set-row link" data-act="share"><span>שיתוף עם חבר</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
       </div>
 
-      <p class="sec">איך זה עובד</p>
+      <h2 class="sec">איך זה עובד</h2>
       <div class="group how">
         <p>לוחצים על המספר הקטן ומקלידים. הספרה הראשונה מחליפה את המספר הקודם.</p>
         <p>לחיצה מחוץ למקלדת סוגרת אותה. C מנקה את השדה.</p>
@@ -146,13 +146,13 @@
         <p>אחרי פתיחה אחת עם קליטה המחשבון עובד גם בלי קליטה.</p>
       </div>
 
-      <p class="sec">עוד</p>
+      <h2 class="sec">עוד</h2>
       <div class="group">
         <button type="button" class="set-row link" id="updateBtn"><span>בדיקת עדכונים</span></button>
         <button type="button" class="set-row link danger" id="resetBtn"><span>איפוס הכול</span></button>
       </div>
 
-      <p class="sec">נגישות ומידע</p>
+      <h2 class="sec">נגישות ומידע</h2>
       <div class="group">
         <div class="set-row stack"><span id="textSizeLbl">גודל טקסט</span>
           <div class="seg" id="segText" role="radiogroup" aria-labelledby="textSizeLbl">
@@ -160,8 +160,8 @@
           </div></div>
         <button type="button" class="set-row switch" id="contrastSwitch" role="switch" aria-checked="false"><span>ניגודיות גבוהה</span><span class="sw" aria-hidden="true"><i></i></span></button>
         <nav class="set-row legal-links" aria-label="מידע משפטי">
-          <button type="button" data-nav="accessibility">הצהרת נגישות</button><span aria-hidden="true">·</span>
-          <button type="button" data-nav="privacy">מדיניות פרטיות</button><span aria-hidden="true">·</span>
+          <button type="button" data-nav="accessibility">הצהרת נגישות</button>
+          <button type="button" data-nav="privacy">מדיניות פרטיות</button>
           <button type="button" data-nav="terms">תנאי שימוש</button>
         </nav>
       </div>
@@ -199,10 +199,10 @@
   <section id="accessibility" class="screen page" hidden>
     <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
-      <h1 class="title">הצהרת נגישות</h1>
+      <h1 class="title" id="accTitle">הצהרת נגישות</h1>
       <span class="ibtn-space"></span>
     </header>
-    <main class="content page-content legal">
+    <main class="content page-content legal" tabindex="0" aria-labelledby="accTitle">
       <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
       <p class="legal-intro">ההצהרה נכתבה לפי חוק שוויון זכויות לאנשים עם מוגבלות, התשנ״ח-1998, ותקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע״ג-2013.</p>
       <h2>1. מחויבות לנגישות</h2>
@@ -215,23 +215,23 @@
         <li>ניגודיות צבעים של 4.5:1 לפחות לטקסט, בערכה הבהירה ובערכה הכהה.</li>
         <li>תפריט נגישות בהגדרות: הגדלת טקסט בשתי רמות וניגודיות גבוהה.</li>
         <li>אפשר להגדיל את התצוגה בצביטה ובהגדרות הדפדפן, והתצוגה מתאימה את עצמה לכל רוחב מסך.</li>
-        <li>שימוש מלא במקלדת: הקלדת מספרים, Enter למעבר, Tab בין שדות ו-Esc לסגירה.</li>
+        <li>שימוש מלא במקלדת: מקלידים מספרים ישירות. Enter עובר לשדה הבא (ובחלון X שומר), Tab עובר בין השדות, ו<span class="nobr">-Esc</span> מבטל את מה שהוקלד בשדה וסוגר את המקלדת.</li>
         <li>תוויות לקורא מסך לכל כפתור ושדה, והקראה של התוצאות אחרי הקלדה.</li>
-        <li>חלון עריכת X עם מיקוד נכון, כפתור ביטול וסגירה ב-Esc.</li>
-        <li>המידע לא מועבר בצבע בלבד: + ו-− מסומנים גם בסימן ובתווית.</li>
+        <li>חלון עריכת X עם מיקוד נכון, כפתור ביטול, וסגירה גם במקש Esc.</li>
+        <li>המידע לא מועבר בצבע בלבד: ליד כל תוצאה יש סימן פלוס או מינוס, ולקורא מסך יש תווית מילולית.</li>
         <li>כיבוד הגדרת ״הפחתת תנועה״ של הטלפון, וערכה כהה לפי בחירה.</li>
       </ul>
       <h2>4. טכנולוגיות</h2>
       <p>HTML, CSS ו-JavaScript עם תכונות WAI-ARIA. המחשבון נבדק בדפדפן Chromium, שעליו מבוסס Chrome.</p>
       <h2>5. מגבלות ידועות</h2>
       <ul>
-        <li>עדיין לא בוצעה בדיקה עם קורא מסך אמיתי (VoiceOver באייפון ו-TalkBack באנדרואיד).</li>
+        <li>עדיין לא בוצעה בדיקה עם קורא מסך אמיתי (VoiceOver באייפון ו<span class="nobr">-TalkBack</span> באנדרואיד).</li>
         <li>מקשי המקלדת שעל המסך לא נכללים בסדר המעבר ב-Tab. במחשב מקלידים ישירות מהמקלדת.</li>
       </ul>
       <h2>6. בדיקות נגישות</h2>
       <p>הנגישות נבדקה בסריקות אוטומטיות (axe-core) בכל המסכים, בשתי הערכות, בניגודיות גבוהה ובטקסט מוגדל, וגם בבדיקות ניגודיות צבעים, בבדיקות שימוש במקלדת ובבדיקות תצוגה ברוחב 260 עד 1280 פיקסלים.</p>
       <h2>7. פנייה בנושא נגישות</h2>
-      <p>נתקלתם בבעיית נגישות? נשמח לשמוע ולטפל. רכז הנגישות: Noam Mamos, mNm services. אפשר לפנות דרך דף המאגר:
+      <p>נתקלתם בבעיית נגישות? נשמח לשמוע ולטפל. רכז הנגישות: Noam Mamos, mNm services. אפשר לפנות דרך דף הפניות (Issues) של המאגר. הפנייה שם דורשת חשבון GitHub, והיא גלויה לכולם:
         <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.
         נטפל בפנייה בתוך 5 ימי עבודה.</p>
       <h2>8. תאריך ההצהרה</h2>
@@ -243,10 +243,10 @@
   <section id="privacy" class="screen page" hidden>
     <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
-      <h1 class="title">מדיניות פרטיות</h1>
+      <h1 class="title" id="privTitle">מדיניות פרטיות</h1>
       <span class="ibtn-space"></span>
     </header>
-    <main class="content page-content legal">
+    <main class="content page-content legal" tabindex="0" aria-labelledby="privTitle">
       <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
       <p class="legal-intro">המדיניות נכתבה לפי חוק הגנת הפרטיות, התשמ״א-1981. בקיצור: המחשבון לא אוסף עליכם שום מידע.</p>
       <h2>1. מי מפעיל את המחשבון</h2>
@@ -254,19 +254,19 @@
       <h2>2. מה נאסף</h2>
       <p>שום מידע אישי. אין הרשמה, ולא נאספים שם, טלפון, מייל או מיקום.</p>
       <h2>3. מה נשמר בטלפון שלכם</h2>
-      <p>המספרים שהקלדתם, ערכי X ששיניתם וההגדרות נשמרים רק בזיכרון של הדפדפן בטלפון שלכם (localStorage), כדי שיופיעו בפעם הבאה. הם לא נשלחים לשום מקום. ״איפוס הכול״ בהגדרות, או מחיקת נתוני האתר בדפדפן, מוחקים אותם.</p>
+      <p>המספרים שהקלדתם, ערכי X ששיניתם וההגדרות נשמרים רק בזיכרון של הדפדפן בטלפון שלכם (localStorage), כדי שיופיעו בפעם הבאה. הם לא נשלחים לשום מקום. ״איפוס הכול״ בהגדרות, או מחיקת נתוני האתר בדפדפן, מוחקים אותם. באייפון לסמל במסך הבית יש זיכרון נפרד: מוחקים בו דרך ״איפוס הכול״ מתוך הסמל, או מוחקים את הסמל.</p>
       <h2>4. עוגיות ומעקב</h2>
       <p>אין עוגיות, אין פרסומות ואין כלי ניתוח או מעקב.</p>
       <h2>5. אחסון האתר</h2>
       <p>קבצי האתר מאוחסנים בשירות GitHub Pages. כמו כל שרת אינטרנט, GitHub עשויה לרשום נתוני גישה טכניים (למשל כתובת IP) לפי מדיניות הפרטיות שלה. הנתונים האלה לא מגיעים אלינו.</p>
       <h2>6. שיתוף</h2>
-      <p>כפתור השיתוף פותח את תפריט השיתוף של הטלפון או קישור לוואטסאפ. נשלח רק הקישור למחשבון, ורק כשאתם בוחרים לשתף.</p>
+      <p>כפתור השיתוף פותח את תפריט השיתוף של הטלפון, או קישור לוואטסאפ. נשלחים הקישור למחשבון ומשפט קצר שמסביר מה זה, ורק כשאתם בוחרים לשתף. השליחה נעשית דרך האפליקציה שבחרתם (למשל וואטסאפ של Meta), לפי תנאי הפרטיות שלה.</p>
       <h2>7. אבטחה</h2>
       <p>האתר מוגש בחיבור מוצפן (HTTPS).</p>
       <h2>8. הזכויות שלכם</h2>
       <p>מאחר שלא נאסף עליכם מידע, אין אצלנו מידע לעיון, לתיקון או למחיקה. המידע שבטלפון נמצא בשליטתכם המלאה.</p>
       <h2>9. פנייה</h2>
-      <p>שאלות על המדיניות: Noam Mamos, mNm services, דרך דף המאגר
+      <p>שאלות על המדיניות: Noam Mamos, mNm services, דרך דף הפניות (Issues) של המאגר (דורש חשבון GitHub, והפנייה גלויה לכולם)
         <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.
         אפשר גם להגיש תלונה לרשות להגנת הפרטיות.</p>
     </main>
@@ -276,10 +276,10 @@
   <section id="terms" class="screen page" hidden>
     <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
-      <h1 class="title">תנאי שימוש</h1>
+      <h1 class="title" id="termsTitle">תנאי שימוש</h1>
       <span class="ibtn-space"></span>
     </header>
-    <main class="content page-content legal">
+    <main class="content page-content legal" tabindex="0" aria-labelledby="termsTitle">
       <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
       <p class="legal-intro">השימוש ב״מחשבון מטבח״ כפוף לתנאים האלה. עצם השימוש במחשבון הוא הסכמה להם.</p>
       <h2>1. מטרת המחשבון</h2>
@@ -291,11 +291,11 @@
       <h2>4. זמינות ושינויים</h2>
       <p>אין התחייבות לזמינות רציפה ומלאה. המחשבון והתנאים עשויים להשתנות מעת לעת, והנוסח העדכני מופיע כאן.</p>
       <h2>5. קניין רוחני</h2>
-      <p>כל הזכויות בקוד, בעיצוב ובלוגו שמורות ל-mNm services.</p>
+      <p>כל הזכויות בקוד, בעיצוב ובלוגו שמורות <span class="nobr">ל-mNm services</span>.</p>
       <h2>6. דין חל</h2>
       <p>התנאים כפופים לדין הישראלי, וסמכות השיפוט לבתי המשפט המוסמכים בישראל.</p>
       <h2>7. יצירת קשר</h2>
-      <p>Noam Mamos, mNm services, דרך דף המאגר
+      <p>Noam Mamos, mNm services, דרך דף הפניות (Issues) של המאגר (דורש חשבון GitHub, והפנייה גלויה לכולם)
         <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.</p>
     </main>
   </section>
@@ -314,12 +314,12 @@
   </div>
 </div>
 
-<dialog id="resetDlg" class="dlg">
+<dialog id="resetDlg" class="dlg" aria-labelledby="resetTitle" aria-describedby="resetDesc">
   <form method="dialog">
-    <h2>לאפס הכול?</h2>
-    <p>ערכי X, ההגדרות והמספרים שהוקלדו יחזרו להתחלה.</p>
+    <h2 id="resetTitle">לאפס הכול?</h2>
+    <p id="resetDesc">ערכי X, ההגדרות והמספרים שהוקלדו יחזרו להתחלה.</p>
     <button type="submit" class="btn btn-danger" value="yes">כן, לאפס הכול</button>
-    <button type="submit" class="btn btn-sec" value="no">ביטול</button>
+    <button type="submit" class="btn btn-sec" value="no" autofocus>ביטול</button>
   </form>
 </dialog>
 
