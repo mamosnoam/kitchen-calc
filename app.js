@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { pressKey, tidy, toH, fmt, show, outlet, handles, cornice, emWidth, isStoredValue, MINUS } from './core.js';
+import { pressKey, tidy, toH, fmt, show, outlet, handles, cornice, emWidth, isStoredValue } from './core.js';
 
 const LIMITS = { maxInt: CONFIG.maxInt, maxDec: CONFIG.maxDec };
 const XMAX_H = toH(CONFIG.xMax);
@@ -9,20 +9,16 @@ const lri = (s) => '⁦' + s + '⁩'; // keep numbers left-to-right inside Hebre
 
 // ---------- Screens and fields ----------
 const SCREENS = {
-  single: { kind: 'outlet', title: 'שקע בודד', icon: 'i-out1' },
-  double: { kind: 'outlet', title: 'שקע כפול', icon: 'i-out2' },
-  triple: { kind: 'outlet', title: 'שקע משולש', icon: 'i-out3' },
-  handles: { kind: 'handles', title: 'ידיות', icon: 'i-handle' },
-  cornice: { kind: 'cornice', title: 'קרניז <bdi dir="ltr">K11/K10</bdi>', icon: 'i-cornice' },
+  single: { kind: 'outlet', title: 'שקע בודד', short: 'בודד', icon: 'i-out1' },
+  double: { kind: 'outlet', title: 'שקע כפול', short: 'כפול', icon: 'i-out2' },
+  triple: { kind: 'outlet', title: 'שקע משולש', short: 'משולש', icon: 'i-out3' },
+  handles: { kind: 'handles', title: 'ידיות', short: 'ידיות', icon: 'i-handle' },
+  cornice: { kind: 'cornice', title: 'קרניז <bdi dir="ltr">K11/K10</bdi>', short: 'קרניז <small class="num">K11/K10</small>', icon: 'i-cornice', label: 'קרניז K11/K10' },
 };
-const SHEETS = ['help', 'install', 'share'];
-const KINDS = {
-  outlet: { order: ['h', 'w'], main: 'h', xOf: { xh: 'h', xw: 'w' } },
-  handles: { order: ['handle', 'front'], main: 'front', xOf: {} },
-  cornice: { order: ['len'], main: 'len', xOf: { x: 'len' } },
-};
+const isScreen = (name) => Object.prototype.hasOwnProperty.call(SCREENS, name);
+const PAGES = ['settings', 'install', 'share'];
 const FIELD_NAME = { h: 'גובה', w: 'רוחב', handle: 'מידת הידית', front: 'מידת החזית', len: 'אורך הארון' };
-const X_NAME = { xh: 'X לגובה', xw: 'X לרוחב', x: 'X של הקרניז' };
+const X_NAME = { xh: 'X לגובה', xw: 'X לרוחב', x: 'X לקרניז' };
 const TAB_NAME = { one: 'בולט צד אחד', two: 'בולט שני צדדים' };
 const SHARE_TEXT = 'מחשבון מידות למתקיני מטבחים – שקעים, ידיות וקרניז. עובד גם בלי קליטה. פתחו את הקישור ב-Safari או ב-Chrome והוסיפו למסך הבית:';
 
@@ -41,6 +37,9 @@ function freshState() {
     corniceTab: 'one',
     installCardHidden: false,
     keepAwake: true,
+    theme: 'auto',       // auto | mint | night
+    resOrder: 'plus',    // plus | minus  (which result is on top)
+    dimOrder: 'hw',      // hw | wh       (height or width first)
   };
 }
 
@@ -69,6 +68,9 @@ function load() {
   if (d.corniceTab === 'one' || d.corniceTab === 'two') s.corniceTab = d.corniceTab;
   if (typeof d.installCardHidden === 'boolean') s.installCardHidden = d.installCardHidden;
   if (typeof d.keepAwake === 'boolean') s.keepAwake = d.keepAwake;
+  if (['auto', 'mint', 'night'].includes(d.theme)) s.theme = d.theme;
+  if (['plus', 'minus'].includes(d.resOrder)) s.resOrder = d.resOrder;
+  if (['hw', 'wh'].includes(d.dimOrder)) s.dimOrder = d.dimOrder;
   return s;
 }
 
@@ -81,27 +83,33 @@ let state = load();
 
 // ---------- UI state (memory only) ----------
 const ui = {
-  route: '', mode: 'type', active: null, fresh: false,
-  before: '',        // value when the field was selected (Esc restores it)
-  draft: null,       // X value while an X is being edited
-  origin: null,      // X value when its editing started
-  undo: null,        // { text, fn } shown in the strip until replaced
-  err: null, errTimer: 0,
-  pendingField: null, pendingKey: null, leavingRead: false,
-  inAppNav: false, shieldUntil: 0,
+  route: '', active: null, fresh: false, before: '', keypad: false,
+  sheet: false, xActive: null, xFresh: false, xDraft: {}, xOrigin: {},
+  inAppNav: false, shieldUntil: 0, msgTimer: 0,
 };
 const els = {};
-const kind = () => (SCREENS[ui.route] ? SCREENS[ui.route].kind : null);
-const isX = (f) => f === 'xh' || f === 'xw' || f === 'x';
+const kind = () => (isScreen(ui.route) ? SCREENS[ui.route].kind : null);
 const inputs = () => state.inputs[ui.route];
-const xKeyOf = (f) => (ui.route === 'cornice' ? 'cornice' : ui.route + '.' + KINDS.outlet.xOf[f]);
+const xKeyOf = (f) => (ui.route === 'cornice' ? 'cornice' : ui.route + '.' + (f === 'xh' ? 'h' : 'w'));
 const xDefault = (key) => CONFIG.xDefaults[key] || '';
 const xStored = (key) => (key in state.x ? state.x[key] : xDefault(key));
-const xCurrent = (f) => (ui.active === f && ui.draft !== null ? ui.draft : xStored(xKeyOf(f)));
-const valueOf = (f) => (isX(f) ? xCurrent(f) : inputs()[f]);
+const xCurrent = (f) => (ui.sheet && f in ui.xDraft ? ui.xDraft[f] : xStored(xKeyOf(f)));
+const plain = (html) => html.replace(/<[^>]+>/g, '');
 const shield = () => { ui.shieldUntil = performance.now() + 400; };
 const shielded = () => performance.now() < ui.shieldUntil;
-const desktop = matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+function order() {
+  const k = kind();
+  if (k === 'outlet') return state.dimOrder === 'wh' ? ['w', 'h'] : ['h', 'w'];
+  if (k === 'handles') return ['handle', 'front'];
+  return ['len'];
+}
+function xFields() {
+  const k = kind();
+  if (k === 'outlet') return state.dimOrder === 'wh' ? ['xw', 'xh'] : ['xh', 'xw'];
+  if (k === 'cornice') return ['x'];
+  return [];
+}
 
 // ---------- Platform ----------
 const ua = navigator.userAgent;
@@ -114,85 +122,64 @@ const android = /Android/.test(ua);
 const safariMajor = (() => { const m = ua.match(/Version\/(\d+)/); return m ? parseInt(m[1], 10) : 0; })();
 let deferredPrompt = null;
 
+// ---------- Theme ----------
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = state.theme === 'mint' || state.theme === 'night' ? state.theme : (darkMQ.matches ? 'night' : 'mint');
+  document.documentElement.setAttribute('data-theme', t);
+  $('#themeColor').setAttribute('content', t === 'night' ? '#0D0F12' : '#F6F7F9');
+}
+
 // ---------- Calculator markup (built once per visit, then updated in place) ----------
-function fieldHTML(f, label, ph, icon) {
-  return `<button type="button" class="field" data-f="${f}">
-    <span class="flabel">${icon ? `<svg class="ico" aria-hidden="true"><use href="#${icon}"/></svg>` : ''}${label} <small>(ס״מ)</small></span>
-    <span class="fval"><span class="num" dir="ltr"><span class="val"></span><span class="caret"></span></span><span class="ph">${ph}</span></span>
-  </button>`;
-}
-function xchipHTML(f, sign) {
-  return `<button type="button" class="field xchip" data-f="${f}">
-    <span class="xlabel">X <svg class="ico" aria-hidden="true"><use href="#i-pencil"/></svg></span>
-    <span class="fval"><span class="num" dir="ltr"><span class="pm">${sign}</span><span class="val"></span><span class="caret"></span></span><span class="ph">הזינו X</span></span>
-    <i class="dot" aria-hidden="true"></i>
-  </button>`;
-}
-function resHTML(d, plus, word) {
-  return `<div class="res ${plus ? 'plus' : 'minus'}" data-r="${d}${plus ? 'Plus' : 'Minus'}">
-    <svg class="badge" aria-hidden="true"><use href="#b-${plus ? 'plus' : 'minus'}"/></svg>
-    <span class="rlabel">${word} <span class="num" dir="ltr">${plus ? '+' : MINUS}<span data-o="${d}x"></span></span></span>
-    <span class="neg-note">⚠ המידה קטנה מ-X<span class="neg-more"> – בדקו אותה</span></span>
-    <span class="fit"><span class="big num" dir="ltr"></span></span>
-  </div>`;
-}
+const inpHTML = (f) => `<button type="button" class="inp" data-f="${f}"><span class="num"><span class="val"></span><span class="caret"></span></span><span class="ph">הקלידו</span></button>`;
+const fitHTML = '<span class="fit"><span class="big num"></span></span>';
+
 function outletHTML() {
-  const band = (d) => {
+  const block = (d) => {
     const word = d === 'h' ? 'גובה' : 'רוחב';
-    return `<section class="band band-${d}">
-      <button type="button" class="rhead" data-go="${d}">
-        <span class="rhead-word">${word}</span>
-        <span class="rhead-sum"><span class="num" dir="ltr" data-o="${d}v"></span> · <span class="num" dir="ltr" data-o="${d}xs"></span></span>
-        <svg class="ico" aria-hidden="true"><use href="#i-pencil"/></svg>
-      </button>
-      <div class="frow">${fieldHTML(d, word + ' מרכז השקע', 'הקלידו ' + word, 'i-' + d)}${xchipHTML('x' + d, '±')}</div>
-      <div class="results">${resHTML(d, true, word)}${resHTML(d, false, word)}</div>
+    return `<section class="block" data-d="${d}">
+      <div class="blk-top"><span class="lbl">${word}</span>${inpHTML(d)}</div>
+      <div class="results">
+        <div class="res" data-r="${d}Plus"><span class="sg p" aria-hidden="true">+</span>${fitHTML}</div>
+        <div class="res" data-r="${d}Minus"><span class="sg m" aria-hidden="true">−</span>${fitHTML}</div>
+      </div>
+      <p class="blk-note" data-note="${d}" hidden></p>
     </section>`;
   };
-  return `<div class="calc-body outlet">${band('h')}${band('w')}</div>`;
+  return `<div class="calc-body outlet">${block('h')}${block('w')}</div>`;
 }
 function handlesHTML() {
-  return `<div class="calc-body handles"><section class="band">
-    <button type="button" class="rhead" data-go="front">
-      <span class="rhead-sum">ידית <span class="num" dir="ltr" data-o="hd"></span> · חזית <span class="num" dir="ltr" data-o="fr"></span></span>
-      <svg class="ico" aria-hidden="true"><use href="#i-pencil"/></svg>
-    </button>
-    <div class="frow two">${fieldHTML('handle', 'מידת הידית', 'הקלידו ידית')}${fieldHTML('front', 'מידת החזית', 'דלת או מגירה')}</div>
-    <div class="res res-one" data-r="margin">
-      <span class="rlabel">מרווח מכל צד</span>
-      <span class="fit"><span class="big num" dir="ltr"></span></span>
-      <p class="formula"><span class="num" dir="ltr" data-o="formula"></span></p>
-      <p class="err-msg">הידית ארוכה מהחזית – בדקו את המידות</p>
-    </div>
+  return `<div class="calc-body handles"><section class="block">
+    <div class="blk-top two"><span class="lbl">ידית</span>${inpHTML('handle')}<span class="lbl">חזית</span>${inpHTML('front')}</div>
+    <div class="res one" data-r="margin"><span class="cap">מרווח מכל צד</span>${fitHTML}</div>
+    <p class="blk-note err" data-note="margin" hidden><svg aria-hidden="true"><use href="#i-warn"/></svg><span>הידית ארוכה מהחזית – בדקו את המידות</span></p>
   </section></div>`;
 }
 function corniceHTML() {
-  const tab = (t) => `<button type="button" class="tab" role="tab" data-tab="${t}"><svg aria-hidden="true"><use href="#t-${t}"/></svg><span class="tab-label"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>${TAB_NAME[t]}</span></button>`;
   return `<div class="calc-body cornice">
-    <p class="banner"><svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg><span>יש לחשב כולל חזית</span></p>
-    <div class="tabs" role="tablist">${tab('one')}${tab('two')}</div>
-    <p class="tabfixed"><svg aria-hidden="true"><use data-o="tabicon" href="#t-one"/></svg><span data-o="tabname"></span></p>
-    <section class="band">
-      <button type="button" class="rhead" data-go="len">
-        <span class="rhead-sum">אורך <span class="num" dir="ltr" data-o="lv"></span> · <span class="num" dir="ltr" data-o="lxs"></span></span>
-        <svg class="ico" aria-hidden="true"><use href="#i-pencil"/></svg>
-      </button>
-      <div class="frow">${fieldHTML('len', 'אורך הארון כולל חזית', 'הקלידו אורך')}${xchipHTML('x', '+')}</div>
-      <div class="res res-one" data-r="cornice">
-        <span class="rlabel" data-o="resLabel"></span>
-        <span class="fit"><span class="big num" dir="ltr"></span></span>
-        <p class="formula"><span class="num" dir="ltr" data-o="formula"></span></p>
-      </div>
+    <p class="note-pill"><svg aria-hidden="true"><use href="#i-warn"/></svg><span>יש לחשב כולל חזית</span></p>
+    <div class="seg" role="tablist" aria-label="סוג קרניז"><button type="button" role="tab" data-tab="one">${TAB_NAME.one}</button><button type="button" role="tab" data-tab="two">${TAB_NAME.two}</button></div>
+    <section class="block">
+      <div class="blk-top"><span class="lbl">אורך הארון</span>${inpHTML('len')}</div>
+      <div class="res one" data-r="cornice"><span class="cap">מידת קרניז</span>${fitHTML}</div>
+      <p class="blk-note" data-note="x" hidden></p>
     </section>
   </div>`;
 }
 
-// ---------- Rendering ----------
-function out(name, text) { for (const el of $$(`[data-o="${name}"]`, els.body)) el.textContent = text; }
-function outHTML(name, html) { for (const el of $$(`[data-o="${name}"]`, els.body)) el.innerHTML = html; }
-const tok = (s) => `<span class="tok">${s}</span>`;
-const word = (s) => `<bdi>${s}</bdi>`;
+function padHTML(actLabel, actIcon) {
+  const d = (k) => `<button type="button" class="k" data-k="${k}" tabindex="-1">${k}</button>`;
+  return [7, 8, 9].map(d).join('')
+    + '<button type="button" class="k" data-k="del" tabindex="-1" aria-label="מחיקה"><svg aria-hidden="true"><use href="#i-del"/></svg></button>'
+    + [4, 5, 6].map(d).join('')
+    + '<button type="button" class="k clr" data-k="clear" tabindex="-1" aria-label="ניקוי">C</button>'
+    + [1, 2, 3].map(d).join('')
+    + `<button type="button" class="k act" data-k="act" tabindex="-1"><svg aria-hidden="true"><use class="act-i" href="#${actIcon}"/></svg><span class="act-l">${actLabel}</span></button>`
+    + d(0)
+    + '<button type="button" class="k" data-k="." tabindex="-1" aria-label="נקודה עשרונית">.</button>';
+}
 
+// ---------- Rendering ----------
 function setRes(key, h, longest) {
   const el = $(`[data-r="${key}"]`, els.body);
   const text = fmt(h);
@@ -201,24 +188,31 @@ function setRes(key, h, longest) {
   el.classList.toggle('is-empty', h === null);
   longest.push(text);
 }
+function note(name, html, cls) {
+  const el = $(`[data-note="${name}"]`, els.body);
+  if (!el) return;
+  el.hidden = !html;
+  if (html) { el.innerHTML = html; el.classList.toggle('err', cls === 'err'); }
+}
+const NOTE_MISSING_X = '<svg aria-hidden="true"><use href="#i-warn"/></svg><span>חסר X · לחצו על ✎ למעלה</span>';
+const NOTE_NEGATIVE = '<svg aria-hidden="true"><use href="#i-warn"/></svg><span>המידה קטנה מ-X – בדקו אותה</span>';
+
+function needsX() { return xFields().some((f) => xCurrent(f) === ''); }
 
 function update() {
   if (!kind() || !els.body) return;
   const k = kind();
-  for (const btn of $$('.field', els.body)) {
+  els.body.classList.toggle('wh', state.dimOrder === 'wh');
+  els.body.classList.toggle('minus-first', state.resOrder === 'minus');
+  for (const btn of $$('.inp', els.body)) {
     const f = btn.dataset.f;
-    const v = valueOf(f);
+    const v = inputs()[f];
     const active = ui.active === f;
     $('.val', btn).textContent = v;
     btn.classList.toggle('is-active', active);
     btn.classList.toggle('is-fresh', active && ui.fresh && v !== '');
     btn.classList.toggle('is-empty', v === '');
-    if (isX(f)) {
-      btn.classList.toggle('is-changed', xKeyOf(f) in state.x);
-      btn.setAttribute('aria-label', `${X_NAME[f]}: ${v || 'ריק'}. לחצו כדי לשנות`);
-    } else {
-      btn.setAttribute('aria-label', `${FIELD_NAME[f]} בסנטימטרים: ${v || 'ריק'}${active && ui.fresh && v ? '. נבחר – מספר חדש יחליף את הקיים' : ''}`);
-    }
+    btn.setAttribute('aria-label', `${FIELD_NAME[f]}: ${v || 'ריק'}`);
   }
   const inp = inputs();
   const longest = [];
@@ -227,322 +221,306 @@ function update() {
     const r = outlet(inp.h, inp.w, xh, xw);
     setRes('hPlus', r.hPlus, longest); setRes('hMinus', r.hMinus, longest);
     setRes('wPlus', r.wPlus, longest); setRes('wMinus', r.wMinus, longest);
-    out('hx', show(xh) || 'X'); out('wx', show(xw) || 'X');
-    out('hv', show(inp.h) || '—'); out('wv', show(inp.w) || '—');
-    out('hxs', 'X ±' + (show(xh) || '?')); out('wxs', 'X ±' + (show(xw) || '?'));
+    note('h', xh === '' ? NOTE_MISSING_X : (r.hMinus !== null && r.hMinus < 0 ? NOTE_NEGATIVE : ''), xh === '' ? '' : 'err');
+    note('w', xw === '' ? NOTE_MISSING_X : (r.wMinus !== null && r.wMinus < 0 ? NOTE_NEGATIVE : ''), xw === '' ? '' : 'err');
   } else if (k === 'handles') {
     const r = handles(inp.handle, inp.front);
-    const el = $('[data-r="margin"]', els.body);
-    el.classList.toggle('is-err', r.error === 'handleLonger');
     setRes('margin', r.margin, longest);
-    const H = show(inp.handle), F = show(inp.front);
-    outHTML('formula', H && F ? `${tok('(' + F)} ${tok(MINUS + ' ' + H + ')')} ${tok('÷ 2')}` : `(${word('חזית')} ${MINUS} ${word('ידית')}) ÷ 2`);
-    out('hd', H || '—'); out('fr', F || '—');
+    $('[data-note="margin"]', els.body).hidden = r.error !== 'handleLonger';
   } else if (k === 'cornice') {
-    const tab = state.corniceTab;
-    const X = xCurrent('x'), L = show(inp.len), XS = show(X);
-    setRes('cornice', cornice(inp.len, X, tab), longest);
-    const xs = XS || 'X';
-    outHTML('formula', L && XS
-      ? (tab === 'two' ? `${tok(L)} ${tok('+ ' + XS)} ${tok('+ ' + XS)}` : `${tok(L)} ${tok('+ ' + XS)}`)
-      : `${word('אורך')} + ${xs}${tab === 'two' ? ' + ' + xs : ''}`);
-    out('resLabel', 'מידת קרניז – ' + TAB_NAME[tab]);
-    out('tabname', TAB_NAME[tab]);
-    for (const el of $$('[data-o="tabicon"]', els.body)) el.setAttribute('href', '#t-' + tab);
-    for (const t of $$('.tab', els.body)) t.setAttribute('aria-selected', String(t.dataset.tab === tab));
-    out('lv', L || '—'); out('lxs', 'X +' + (XS || '?'));
+    const X = xCurrent('x');
+    setRes('cornice', cornice(inp.len, X, state.corniceTab), longest);
+    for (const t of $$('[data-tab]', els.body)) t.setAttribute('aria-selected', String(t.dataset.tab === state.corniceTab));
+    note('x', X === '' ? NOTE_MISSING_X : '');
   }
   els.body.style.setProperty('--w', Math.max(...longest.map(emWidth)).toFixed(2));
-  updateStrip();
-  updateActionKey();
-}
-
-function needsX() {
-  if (kind() === 'outlet') return xCurrent('xh') === '' || xCurrent('xw') === '';
-  if (kind() === 'cornice') return xCurrent('x') === '';
-  return false;
-}
-
-function updateStrip() {
-  const strip = els.strip, text = els.stripText, btn = els.stripBtn;
-  strip.className = 'strip';
-  btn.hidden = true;
-  btn.onclick = null;
-  const f = ui.active;
-  if (ui.err) { strip.classList.add('mode-err'); text.textContent = ui.err; return; }
-  if (f && isX(f)) {
-    strip.classList.add('mode-x');
-    text.textContent = `משנים עכשיו את ${X_NAME[f]} – לא את המידה`;
-    const def = xDefault(xKeyOf(f));
-    if (def !== '' && tidy(ui.draft || '') !== def) {
-      btn.hidden = false;
-      btn.textContent = '↺ חזרה ל-' + lri(def);
-      btn.onclick = () => resetX(f);
-    }
-    return;
-  }
-  if (needsX()) { strip.classList.add('mode-need'); text.textContent = 'חסר X – לחצו על X והקלידו'; return; }
-  if (ui.undo) {
-    strip.classList.add('mode-msg');
-    text.textContent = ui.undo.text;
-    btn.hidden = false;
-    btn.textContent = 'ביטול';
-    btn.onclick = runUndo;
-    return;
-  }
-  if (!f) { text.textContent = ''; return; }
-  const v = valueOf(f);
-  const name = FIELD_NAME[f];
-  if (v === '') text.textContent = `${name} · הקלידו מספר`;
-  else if (ui.fresh) text.textContent = `${name} · מספר חדש יחליף את הקיים` + (desktop ? ' · אפשר להקליד מהמקלדת' : '');
-  else text.textContent = name;
-}
-
-function updateActionKey() {
-  const f = ui.active;
-  let label = 'סיום', icon = '#i-check', xMode = false;
-  if (f && isX(f)) { label = 'שמירת X'; xMode = true; }
-  else if (f) {
-    const order = KINDS[kind()].order;
-    const i = order.indexOf(f);
-    if (i >= 0 && i < order.length - 1) { label = 'הבא'; icon = '#i-next'; }
-  }
-  els.actLabel.textContent = label;
-  els.actIcon.setAttribute('href', icon);
-  els.actKey.classList.toggle('is-x', xMode);
+  $('.edot', els.calc).hidden = !needsX();
+  // action key: "הבא" while another field follows, otherwise it hides the keypad
+  const o = order();
+  const i = o.indexOf(ui.active);
+  const next = i >= 0 && i < o.length - 1;
+  $('.act-l', els.mainPad).textContent = next ? 'הבא' : 'סגירה';
+  $('.act-i', els.mainPad).setAttribute('href', next ? '#i-next' : '#i-hide');
 }
 
 // ---------- Field logic (the overwrite rule) ----------
-function entryField() {
-  const k = kind();
-  if (k === 'handles') return inputs().handle === '' ? 'handle' : 'front';
-  return KINDS[k].main;
-}
-
 function activate(f) {
   if (ui.active && ui.active !== f) commit(ui.active);
-  if (isX(f)) {
-    // a re-tap keeps the original X, so "save" on an emptied X can fall back to it
-    if (ui.active !== f) { ui.origin = xStored(xKeyOf(f)); ui.draft = ui.origin; }
-  } else {
-    ui.draft = null;
-    ui.before = valueOf(f); // Esc goes back to the value at the moment of selection
-  }
+  ui.before = inputs()[f]; // Esc goes back to the value at the moment of selection
   ui.active = f;
-  ui.fresh = true; // selected: nothing changes until a key is typed
-  ui.err = null;
+  ui.fresh = true;         // selected: nothing changes until a key is typed
   update();
-  const btn = $(`.field[data-f="${f}"]`, els.body);
-  if (btn) btn.scrollIntoView({ block: 'nearest' });
-}
-
-function setX(key, v) {
-  if (v === xDefault(key)) delete state.x[key]; else state.x[key] = v;
-  save();
 }
 
 function commit(f) {
-  if (isX(f)) {
-    const key = xKeyOf(f);
-    let v = tidy(ui.draft || '');
-    if (v === '' && xDefault(key) !== '') v = ui.origin; // an X with a default can never be blank
-    const old = ui.origin;
-    setX(key, v);
-    ui.draft = null;
-    if (v !== old) setUndo(`${X_NAME[f]} שונה מ-${lri(old || '—')} ל-${lri(v || '—')}`, () => setX(key, old));
-  } else {
-    const inp = inputs();
-    const t = tidy(inp[f]);
-    if (t !== inp[f]) { inp[f] = t; save(); }
-  }
+  const inp = inputs();
+  const t = tidy(inp[f]);
+  if (t !== inp[f]) { inp[f] = t; save(); }
 }
 
-function discardDraft() { ui.draft = null; ui.origin = null; }
-
-function resetX(f) {
-  if (shielded()) return;
-  const key = xKeyOf(f), def = xDefault(key), old = ui.origin;
-  setX(key, def);
-  discardDraft();
-  ui.active = null;
-  if (def !== old) setUndo(`${X_NAME[f]} חזר ל-${lri(def)}`, () => setX(key, old));
-  activate(KINDS[kind()].xOf[f]);
-  shield(); // the same button turns into "ביטול": a double tap must not undo at once
+function openField(f) {
+  activate(f);
+  if (!ui.keypad) openKeypad();
 }
 
-function setUndo(text, fn) { ui.undo = { text, fn }; }
-function runUndo() {
-  if (!ui.undo || shielded()) return;
-  const { fn } = ui.undo;
-  ui.undo = null;
-  fn();
+function openKeypad() {
+  ui.keypad = true;
+  els.calc.classList.add('kp-open');
+  hideToast(); // a toast must never cover the keypad
+  if (!(history.state && history.state.kp)) history.pushState({ kp: true }, '');
+  armIdle();
   update();
-  flashResult();
 }
 
-function reject(msg) {
-  const btn = ui.active && $(`.field[data-f="${ui.active}"]`, els.body);
-  if (btn) { btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake'); }
-  ui.err = msg;
-  clearTimeout(ui.errTimer);
-  ui.errTimer = setTimeout(() => { ui.err = null; updateStrip(); }, 2000);
-  updateStrip();
+function closeKeypad({ fromPop = false } = {}) {
+  if (!ui.keypad) return;
+  if (ui.active) commit(ui.active);
+  ui.active = null;
+  ui.fresh = false;
+  ui.keypad = false;
+  els.calc.classList.remove('kp-open');
+  showKpMsg('');
+  if (!fromPop && history.state && history.state.kp) history.back();
+  armIdle();
+  update();
+}
+
+function showKpMsg(msg) {
+  const el = els.kpMsg;
+  clearTimeout(ui.msgTimer);
+  el.textContent = msg;
+  el.hidden = !msg;
+  if (msg) ui.msgTimer = setTimeout(() => { el.hidden = true; }, 2000);
+}
+
+function shake(el) {
+  if (!el) return;
+  el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+}
+
+function rejectText(reason) {
+  if (reason === 'int') return `אפשר עד ${CONFIG.maxInt} ספרות לפני הנקודה`;
+  if (reason === 'dec') return CONFIG.maxDec === 1 ? 'אפשר ספרה אחת אחרי הנקודה' : `אפשר עד ${CONFIG.maxDec} ספרות אחרי הנקודה`;
+  return '';
 }
 
 function press(k) {
   if (!kind()) return;
-  if (ui.mode === 'read') { if (/^[0-9.]$/.test(k)) goType(KINDS[kind()].main, k); return; }
-  if (!ui.active) activate(entryField());
+  if (ui.sheet) { xPress(k); return; }
+  if (!ui.keypad || !ui.active) {
+    if (!/^[0-9.]$/.test(k)) return;
+    openField(order()[0]);
+  }
   if (k === 'act') { action(); return; }
   const f = ui.active;
-  const r = pressKey(valueOf(f), ui.fresh, k, LIMITS);
+  if (k === 'clear') { inputs()[f] = ''; save(); ui.fresh = false; update(); return; }
+  const r = pressKey(inputs()[f], ui.fresh, k, LIMITS);
   if (r.reject) {
-    if (r.reject === 'int') reject(`אפשר עד ${CONFIG.maxInt} ספרות לפני הנקודה`);
-    else if (r.reject === 'dec') reject(CONFIG.maxDec === 1 ? 'אפשר ספרה אחת אחרי הנקודה' : `אפשר עד ${CONFIG.maxDec} ספרות אחרי הנקודה`);
+    if (r.reject !== 'dot') { shake($(`.inp[data-f="${f}"]`, els.body)); showKpMsg(rejectText(r.reject)); }
     return;
   }
-  if (isX(f) && r.value !== '' && toH(r.value) > XMAX_H) { reject('X גדול מדי – אולי התכוונתם להקליד מידה?'); return; }
-  if (isX(f)) ui.draft = r.value; else { inputs()[f] = r.value; save(); }
+  inputs()[f] = r.value;
+  save();
   ui.fresh = r.fresh;
-  ui.err = null;
-  ui.undo = null; // "ביטול" is offered only until the next number is typed
   update();
 }
 
 function action() {
-  const f = ui.active;
-  if (!f) return;
-  if (isX(f)) { commit(f); ui.active = null; activate(KINDS[kind()].xOf[f]); return; }
-  const order = KINDS[kind()].order;
-  const i = order.indexOf(f);
-  if (i < order.length - 1) { activate(order[i + 1]); return; }
-  commit(f);
-  ui.active = null;
-  history.pushState({ read: true }, '');
-  setMode('read');
+  const o = order();
+  const i = o.indexOf(ui.active);
+  if (i >= 0 && i < o.length - 1) { activate(o[i + 1]); return; }
+  closeKeypad();
 }
 
 function cycle(dir) {
-  if (ui.active && isX(ui.active)) { action(); return; }
-  const order = KINDS[kind()].order;
-  const i = Math.max(0, order.indexOf(ui.active));
-  activate(order[(i + dir + order.length) % order.length]);
+  const o = order();
+  const i = Math.max(0, o.indexOf(ui.active));
+  activate(o[(i + dir + o.length) % o.length]);
 }
 
 function escape() {
-  const f = ui.active;
-  if (!f) return;
-  if (isX(f)) { discardDraft(); ui.active = null; activate(KINDS[kind()].xOf[f]); return; }
-  inputs()[f] = ui.before;
-  save();
-  ui.fresh = true;
-  update();
+  if (ui.active) { inputs()[ui.active] = ui.before; save(); }
+  closeKeypad();
 }
 
 function switchTab(t) {
   if (state.corniceTab === t) return;
-  const old = state.corniceTab;
   state.corniceTab = t;
   save();
-  setUndo('החישוב עכשיו: ' + TAB_NAME[t], () => { state.corniceTab = old; save(); });
   update();
   flashResult();
 }
 
 function flashResult() {
-  const el = $('.res-one', els.body);
+  const el = $('.res.one', els.body);
   if (!el) return;
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 
-// ---------- Modes and navigation ----------
-function setMode(m) {
-  ui.mode = m;
-  els.calc.classList.toggle('mode-read', m === 'read');
-  els.calc.classList.toggle('mode-type', m === 'type');
-  shield();
-  armIdle();
-  if (m === 'read') {
-    ui.active = null;
-    ui.fresh = false;
-    update();
-    els.content.scrollTop = 0;
-    els.content.focus({ preventScroll: true });
+// ---------- X editor (hidden behind ✎) ----------
+function setX(key, v) {
+  if (v === xDefault(key)) delete state.x[key]; else state.x[key] = v;
+  save();
+}
+
+function openXSheet() {
+  const fs = xFields();
+  if (!fs.length || shielded()) return;
+  if (ui.keypad) {
+    if (ui.active) commit(ui.active);
+    ui.active = null; ui.keypad = false;
+    els.calc.classList.remove('kp-open');
+  }
+  ui.sheet = true;
+  ui.xDraft = {}; ui.xOrigin = {};
+  for (const f of fs) { const v = xStored(xKeyOf(f)); ui.xDraft[f] = v; ui.xOrigin[f] = v; }
+  ui.xActive = fs[0];
+  ui.xFresh = true;
+  if (history.state && history.state.kp) history.replaceState({ sheet: 'x' }, '');
+  else history.pushState({ sheet: 'x' }, '');
+  hideToast();
+  $('#xTitle').textContent = 'ערכי X · ' + plain(SCREENS[ui.route].title);
+  $('#xOverlay').hidden = false;
+  renderXSheet();
+  update();
+  shield(); // a double tap on ✎ must not land on the dim layer
+}
+
+function renderXSheet() {
+  const rows = xFields().map((f) => {
+    const v = ui.xDraft[f];
+    const cls = ['xrow',
+      ui.xActive === f ? 'is-active' : '',
+      ui.xActive === f && ui.xFresh && v !== '' ? 'is-fresh' : '',
+      v === '' ? 'is-empty' : '',
+      v !== xDefault(xKeyOf(f)) ? 'is-changed' : ''].join(' ');
+    return `<button type="button" class="${cls}" data-x="${f}" aria-label="${X_NAME[f]}: ${v || 'ריק'}"><span class="t">${X_NAME[f]}</span><span class="num"><span class="val">${v}</span><span class="caret"></span></span><span class="ph">הקלידו</span></button>`;
+  });
+  $('#xRows').innerHTML = rows.join('');
+  const resettable = xFields().some((f) => xDefault(xKeyOf(f)) !== '' && tidy(ui.xDraft[f]) !== xDefault(xKeyOf(f)));
+  $('#xReset').hidden = !resettable;
+}
+
+function xHint(msg) {
+  const h = $('#xHint');
+  clearTimeout(ui.msgTimer);
+  h.classList.toggle('err', !!msg);
+  h.textContent = msg || 'נשמר בטלפון עד שמשנים שוב';
+  if (msg) ui.msgTimer = setTimeout(() => xHint(''), 2000);
+}
+
+function xPress(k) {
+  if (k === 'act') { saveXSheet(); return; }
+  const f = ui.xActive;
+  if (!f) return;
+  if (k === 'clear') { ui.xDraft[f] = ''; ui.xFresh = false; renderXSheet(); update(); return; }
+  const r = pressKey(ui.xDraft[f], ui.xFresh, k, LIMITS);
+  if (r.reject) {
+    if (r.reject !== 'dot') { shake($(`.xrow[data-x="${f}"]`)); xHint(rejectText(r.reject)); }
+    return;
+  }
+  if (r.value !== '' && toH(r.value) > XMAX_H) { shake($(`.xrow[data-x="${f}"]`)); xHint('X גדול מדי – אולי התכוונתם להקליד מידה?'); return; }
+  ui.xDraft[f] = r.value;
+  ui.xFresh = r.fresh;
+  renderXSheet();
+  update(); // results behind the sheet follow the draft
+}
+
+function selectX(f) { ui.xActive = f; ui.xFresh = true; renderXSheet(); }
+
+function resetXDrafts() {
+  for (const f of xFields()) { const d = xDefault(xKeyOf(f)); if (d !== '') ui.xDraft[f] = d; }
+  ui.xFresh = true;
+  renderXSheet();
+  update();
+}
+
+function saveXSheet() {
+  const changes = [];
+  for (const f of Object.keys(ui.xDraft)) {
+    const key = xKeyOf(f), def = xDefault(key);
+    let v = tidy(ui.xDraft[f]);
+    if (v === '' && def !== '') v = ui.xOrigin[f] || def; // an X with a default can never be blank
+    if (v !== ui.xOrigin[f]) changes.push({ f, key, old: ui.xOrigin[f], v });
+  }
+  for (const c of changes) setX(c.key, c.v);
+  closeXSheet();
+  update();
+  if (changes.length) {
+    const msg = changes.length === 1
+      ? `${X_NAME[changes[0].f]} שונה מ-${lri(changes[0].old || '—')} ל-${lri(changes[0].v || '—')}`
+      : 'ערכי X עודכנו';
+    toast(msg, () => { for (const c of changes) setX(c.key, c.old); update(); flashResult(); }, 6000);
   }
 }
 
-function goType(field, key) {
-  if (ui.mode !== 'read') { activate(field); return; }
-  if (ui.leavingRead) { if (key) ui.pendingKey = (ui.pendingKey || '') + key; return; }
-  ui.pendingField = field;
-  ui.pendingKey = key || null;
-  if (history.state && history.state.read) { ui.leavingRead = true; shield(); history.back(); }
-  else { setMode('type'); afterType(); }
+function closeXSheet({ fromPop = false } = {}) {
+  if (!ui.sheet) return;
+  ui.sheet = false;
+  ui.xDraft = {}; ui.xOrigin = {}; ui.xActive = null;
+  $('#xOverlay').hidden = true;
+  xHint('');
+  if (!fromPop && history.state && history.state.sheet) history.back();
+  shield(); // a double tap on "שמירה" must not land on the screen behind
 }
 
-function afterType() {
-  const f = ui.pendingField || entryField();
-  const keys = ui.pendingKey || '';
-  ui.pendingField = ui.pendingKey = null;
-  ui.active = null;
-  activate(f);
-  for (const k of keys) press(k);
-}
+function cancelXSheet() { closeXSheet(); update(); }
 
+// ---------- Navigation ----------
 function enterCalc(name) {
   const scr = SCREENS[name];
   els.calcTitle.innerHTML = scr.title;
-  els.calcIcon.setAttribute('href', '#' + scr.icon);
   els.content.innerHTML = scr.kind === 'outlet' ? outletHTML() : scr.kind === 'handles' ? handlesHTML() : corniceHTML();
   els.body = $('.calc-body', els.content);
-  els.content.scrollTop = 0;
-  ui.active = null; ui.undo = null; ui.err = null; ui.draft = null; ui.fresh = false;
-  hideToast(); // a toast would cover the bottom row of the keypad
+  $('#editXBtn').hidden = scr.kind === 'handles';
+  ui.active = null; ui.fresh = false; ui.keypad = false;
+  els.calc.classList.remove('kp-open');
+  hideToast();
+  update();
   wake.want = true;
   lockOn();
+  armIdle();
 }
 
 function leaveCalc() {
-  if (ui.active) { if (isX(ui.active)) discardDraft(); else commit(ui.active); }
-  ui.active = null; ui.undo = null; ui.err = null;
-  ui.pendingField = ui.pendingKey = null; ui.leavingRead = false;
+  if (ui.sheet) closeXSheet({ fromPop: true });
+  if (ui.active) commit(ui.active);
+  ui.active = null; ui.keypad = false;
+  els.calc.classList.remove('kp-open');
   wake.want = false;
   lockOff();
   clearTimeout(wake.idle);
 }
 
-const isScreen = (name) => Object.prototype.hasOwnProperty.call(SCREENS, name);
-
 function showScreen(name) {
-  const calcOn = !!SCREENS[name];
   $('#home').hidden = name !== 'home';
-  els.calc.hidden = !calcOn;
-  for (const s of SHEETS) $('#' + s).hidden = name !== s;
+  els.calc.hidden = !isScreen(name);
+  for (const p of PAGES) $('#' + p).hidden = name !== p;
 }
 
 function route() {
-  ui.leavingRead = false;
   const name = location.hash.replace(/^#\/?/, '') || 'home';
-  const target = isScreen(name) || SHEETS.includes(name) ? name : 'home';
-  const mode = isScreen(target) && history.state && history.state.read ? 'read' : 'type';
+  const target = isScreen(name) || PAGES.includes(name) ? name : 'home';
+  const st = history.state || {};
   const prev = ui.route;
-  if (target === prev && (!SCREENS[target] || mode === ui.mode)) return;
-  if (SCREENS[prev] && target !== prev) leaveCalc();
+  if (target === prev) {
+    if (isScreen(target)) {
+      if (ui.sheet && st.sheet !== 'x') { closeXSheet({ fromPop: true }); update(); }
+      if (ui.keypad && !st.kp) closeKeypad({ fromPop: true });
+    }
+    return;
+  }
+  if (isScreen(prev)) leaveCalc();
   ui.route = target;
   showScreen(target);
-  if (SCREENS[target]) {
-    if (target !== prev) { enterCalc(target); ui.mode = ''; }
-    if (mode === 'read') setMode('read');
-    else { setMode('type'); afterType(); }
-  } else {
-    shield();
-    if (target === 'home') { renderHome(); reloadIfIdle(); }
-    else if (target === 'help') renderHelp();
-    else if (target === 'install') renderInstall();
-    else if (target === 'share') renderShare();
-    const c = $(`#${target} .content`);
-    if (c) c.scrollTop = 0;
-  }
+  shield();
+  if (isScreen(target)) enterCalc(target);
+  else if (target === 'home') { renderHome(); reloadIfIdle(); }
+  else if (target === 'settings') renderSettings();
+  else if (target === 'install') renderInstall();
+  else if (target === 'share') renderShare();
+  const c = $(`#${target} .content`);
+  if (c) c.scrollTop = 0;
 }
 
 function nav(name) { ui.inAppNav = true; shield(); location.hash = '#/' + name; }
@@ -550,7 +528,8 @@ function nav(name) { ui.inAppNav = true; shield(); location.hash = '#/' + name; 
 function goHome() {
   shield();
   if (ui.inAppNav) {
-    if (SCREENS[ui.route] && ui.mode === 'read' && history.state && history.state.read) history.go(-2);
+    const st = history.state || {};
+    if (isScreen(ui.route) && (st.kp || st.sheet)) history.go(-2);
     else history.back();
   } else {
     history.replaceState(null, '', location.pathname + location.search);
@@ -558,26 +537,22 @@ function goHome() {
   }
 }
 
-function closeSheet() {
+function closePage() {
   shield();
   if (ui.inAppNav) history.back();
   else { history.replaceState(null, '', location.pathname + location.search); route(); }
 }
 
-// ---------- Home, help, install, share ----------
+// ---------- Home, settings, install, share ----------
 function renderTiles() {
-  $('#tiles').innerHTML = CONFIG.homeOrder.filter((id) => SCREENS[id]).map((id) => {
-    const label = id === 'cornice' ? 'קרניז <bdi dir="ltr">K11/K10</bdi>' : SCREENS[id].title;
-    return `<button type="button" class="tile" data-go="${id}"><svg class="tile-ico" aria-hidden="true"><use href="#${SCREENS[id].icon}"/></svg><span class="tile-label">${label}</span><svg class="tile-chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`;
-  }).join('');
+  const tile = (id) => `<button type="button" class="tile" data-go="${id}" aria-label="${SCREENS[id].label || plain(SCREENS[id].title)}"><svg class="tile-ico" aria-hidden="true"><use href="#${SCREENS[id].icon}"/></svg><span class="tile-nm">${SCREENS[id].short}</span></button>`;
+  const ids = CONFIG.homeOrder.filter(isScreen);
+  $('#tilesOutlets').innerHTML = ids.filter((id) => SCREENS[id].kind === 'outlet').map(tile).join('');
+  $('#tilesCabinets').innerHTML = ids.filter((id) => SCREENS[id].kind !== 'outlet').map(tile).join('');
 }
 
 function renderHome() {
-  const standalone = isStandalone();
-  const card = standalone || state.installCardHidden;
-  $('#installCard').hidden = card;
-  $('#addHomeBtn').hidden = standalone || !card; // while the card shows, its own button is enough
-  $('.home-foot').classList.toggle('single', $('#addHomeBtn').hidden);
+  $('#installCard').hidden = isStandalone() || state.installCardHidden;
   renderStatus();
 }
 
@@ -593,23 +568,28 @@ function renderStatus() {
     txt.textContent = 'כדי שיעבוד בלי קליטה: הוסיפו למסך הבית ופתחו משם פעם אחת כשיש קליטה.';
     return;
   }
-  if (sw.ok) { txt.textContent = 'מוכן לעבודה גם בלי קליטה'; return; }
+  if (sw.ok) { txt.textContent = 'עובד גם בלי קליטה'; return; }
   el.classList.add('is-wait');
-  txt.textContent = sw.timedOut
-    ? 'צריך קליטה לרגע כדי להכין את המחשבון לעבודה בלי קליטה'
-    : 'שומר את המחשבון בטלפון כדי שיעבוד גם בלי קליטה…';
+  txt.textContent = sw.timedOut ? 'צריך קליטה לרגע כדי להכין עבודה בלי קליטה' : 'מכין עבודה בלי קליטה…';
 }
 
-function renderHelp() {
+function setSeg(id, value) {
+  for (const b of $$(`#${id} button`)) b.setAttribute('aria-checked', String(b.dataset.v === value));
+}
+
+function renderSettings() {
+  setSeg('segTheme', state.theme);
+  setSeg('segRes', state.resOrder);
+  setSeg('segDim', state.dimOrder);
   const standalone = isStandalone();
-  $('#helpInstalled').hidden = !standalone;
-  $('#helpInstallBtn').hidden = standalone;
-  const sw2 = $('#awakeSwitch');
+  $('#setInstalled').hidden = !standalone;
+  $('#setInstallBtn').hidden = standalone;
+  const s = $('#awakeSwitch');
   const supported = 'wakeLock' in navigator;
-  sw2.disabled = !supported;
-  sw2.setAttribute('aria-checked', String(supported && state.keepAwake));
+  s.disabled = !supported;
+  s.setAttribute('aria-checked', String(supported && state.keepAwake));
   $('#awakeNote').hidden = supported;
-  $('#versionLine').textContent = 'גרסה ' + (sw.version || '—') + (sw.ok ? ' · מוכן לעבודה גם בלי קליטה' : '');
+  $('#versionLine').textContent = 'גרסה ' + (sw.version || '—') + (sw.ok ? ' · עובד גם בלי קליטה' : '');
 }
 
 function steps(list) {
@@ -622,13 +602,13 @@ const INSTALL = {
       : 'ריבוע עם חץ למעלה, בתחתית המסך.'],
     ['p-addhome', 'בחרו "הוספה למסך הבית".', 'לא מופיע? גללו למטה ברשימה.'],
     ['i-check', 'לחצו "הוסף" למעלה.', 'השאירו את "פתיחה כאפליקציה" דלוק.'],
-    ['i-add', 'פתחו מהסמל החדש, פעם אחת כשיש קליטה.', 'מאותו רגע הוא עובד גם בלי קליטה.'],
-  ]) + `<p class="tip">באייפון לסמל במסך הבית יש זיכרון נפרד מהדפדפן. את ערכי ה-X קובעים מתוך הסמל, אחרי ההוספה.</p>
-       <p class="tip">אין "הוספה למסך הבית"? גללו לתחתית הרשימה, לחצו "עריכת פעולות" והוסיפו אותה. אם גם זה לא עוזר, כנראה הקישור נפתח בתוך אפליקציה (וואטסאפ, ג׳ימייל) – פתחו אותו ב-Safari ונסו שוב.</p>`,
+    ['i-phone', 'פתחו מהסמל החדש, פעם אחת כשיש קליטה.', 'מאותו רגע הוא עובד גם בלי קליטה.'],
+  ]) + `<p class="tip">באייפון לסמל במסך הבית יש זיכרון נפרד מהדפדפן, ולכן את ערכי ה-X קובעים מתוך הסמל.</p>
+       <p class="tip">אין "הוספה למסך הבית"? בתחתית הרשימה לחצו "עריכת פעולות" והוסיפו אותה. אם גם זה לא עוזר, כנראה הקישור נפתח בתוך אפליקציה (וואטסאפ, ג׳ימייל): פתחו אותו ב-Safari ונסו שוב.</p>`,
   iosOther: () => steps([
     ['p-share', 'לחצו על כפתור השיתוף בשורת הכתובת.'],
     ['p-addhome', 'בחרו "הוספה למסך הבית" ואשרו.'],
-    ['i-add', 'פתחו מהסמל החדש, פעם אחת כשיש קליטה.'],
+    ['i-phone', 'פתחו מהסמל החדש, פעם אחת כשיש קליטה.'],
   ]) + '<p class="tip">לא מוצאים? פתחו את הקישור ב-Safari ונסו שוב.</p>',
   android: () => steps([
     ['p-kebab', 'לחצו על ⋮ (שלוש נקודות) למעלה.'],
@@ -658,11 +638,10 @@ function renderInstall() {
   else main = 'desktop';
   const others = [['iosSafari', 'אייפון (Safari)'], ['android', 'אנדרואיד (Chrome)'], ['samsung', 'סמסונג (הדפדפן של סמסונג)'], ['desktop', 'מחשב'], ['inApp', 'נפתח בתוך וואטסאפ או אפליקציה אחרת']]
     .filter(([k]) => k !== main);
-  c.innerHTML = `<p class="lead">אחרי ההוספה יופיע סמל במסך הבית. לחיצה עליו פותחת את המחשבון – גם בלי קליטה.</p>
-    ${deferredPrompt ? '<button type="button" class="btn btn-pri btn-wide" id="promptBtn"><svg class="ico"><use href="#i-add"/></svg><span>התקנה</span></button>' : ''}
+  c.innerHTML = `<p class="lead">אחרי ההוספה יופיע סמל במסך הבית, והמחשבון ייפתח ממנו גם בלי קליטה.</p>
+    ${deferredPrompt ? '<button type="button" class="btn btn-pri" id="promptBtn">התקנה</button>' : ''}
     ${INSTALL[main]()}
-    <details class="more"><summary>הוראות לטלפון אחר</summary>${others.map(([k, t]) => `<h3>${t}</h3>${INSTALL[k]()}`).join('')}</details>
-    <button type="button" class="btn btn-pri btn-wide" data-act="close"><span>הבנתי</span></button>`;
+    <details class="more"><summary>הוראות לטלפון אחר</summary>${others.map(([k, t]) => `<h3>${t}</h3>${INSTALL[k]()}`).join('')}</details>`;
   const p = $('#promptBtn');
   if (p) p.onclick = () => doInstall();
 }
@@ -713,7 +692,7 @@ function copyLink() {
   } else fail();
 }
 
-// ---------- Toast (outside calculators) ----------
+// ---------- Toast ----------
 let toastTimer = 0;
 function toast(text, undoFn, ms) {
   const t = $('#toast'), b = $('#toastBtn');
@@ -726,9 +705,10 @@ function toast(text, undoFn, ms) {
 }
 function hideToast() { $('#toast').hidden = true; clearTimeout(toastTimer); }
 function refreshScreen() {
+  applyTheme();
   if (kind()) update();
   else if (ui.route === 'home') renderHome();
-  else if (ui.route === 'help') renderHelp();
+  else if (ui.route === 'settings') renderSettings();
 }
 
 // ---------- Reset all ----------
@@ -736,8 +716,8 @@ function doReset() {
   const snap = JSON.stringify(state);
   state = freshState();
   save();
-  renderHelp();
-  toast('הכול אופס לערכים המקוריים', () => { state = JSON.parse(snap); save(); refreshScreen(); }, 8000);
+  refreshScreen();
+  toast('הכול אופס להתחלה', () => { state = JSON.parse(snap); save(); refreshScreen(); }, 8000);
 }
 
 // ---------- Keep the screen on ----------
@@ -757,7 +737,7 @@ function lockOff() {
 function armIdle() {
   clearTimeout(wake.idle);
   if (!wake.want) return;
-  wake.idle = setTimeout(lockOff, (ui.mode === 'read' ? 30 : 10) * 60 * 1000);
+  wake.idle = setTimeout(lockOff, (ui.keypad ? 10 : 30) * 60 * 1000);
 }
 
 // ---------- Offline + updates ----------
@@ -770,7 +750,7 @@ function askStatus() {
     sw.ok = !!(e.data && e.data.ok);
     sw.version = (e.data && e.data.version) || sw.version;
     renderStatus();
-    if (ui.route === 'help') renderHelp();
+    if (ui.route === 'settings') renderSettings();
     if (!sw.ok && sw.tries++ < 10) setTimeout(askStatus, 2000);
   };
   target.postMessage({ type: 'status' }, [ch.port2]);
@@ -806,17 +786,51 @@ async function checkUpdates() {
 }
 
 // ---------- Events ----------
+function bindKeypad(pad, onKey) {
+  const downs = new Map();
+  const SLOP = 16; // a key counts if the finger lifts within 16 px of the key it touched
+  let lastPtrPress = 0;
+  pad.addEventListener('pointerdown', (e) => {
+    const key = e.target.closest('.k');
+    if (!key || shielded()) return;
+    try { key.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    downs.set(e.pointerId, key);
+    key.classList.add('down');
+  });
+  pad.addEventListener('pointerup', (e) => {
+    const key = downs.get(e.pointerId);
+    if (!key) return;
+    downs.delete(e.pointerId);
+    key.classList.remove('down');
+    const r = key.getBoundingClientRect();
+    if (e.clientX >= r.left - SLOP && e.clientX <= r.right + SLOP && e.clientY >= r.top - SLOP && e.clientY <= r.bottom + SLOP) {
+      lastPtrPress = performance.now();
+      onKey(key.dataset.k);
+    }
+  });
+  pad.addEventListener('pointercancel', (e) => {
+    const key = downs.get(e.pointerId);
+    if (key) { key.classList.remove('down'); downs.delete(e.pointerId); }
+  });
+  pad.addEventListener('click', (e) => {
+    const key = e.target.closest('.k');
+    // keyboard / assistive technology activation (but not the extra click some screen readers send after a touch)
+    if (key && e.detail === 0 && performance.now() - lastPtrPress > 600) onKey(key.dataset.k);
+  });
+  pad.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
 function bind() {
   els.calc = $('#calc');
   els.content = $('#calcContent');
   els.calcTitle = $('#calcTitle');
-  els.calcIcon = $('#calcIcon');
-  els.strip = $('#strip');
-  els.stripText = $('#stripText');
-  els.stripBtn = $('#stripBtn');
-  els.actKey = $('.key-act');
-  els.actLabel = $('#actLabel');
-  els.actIcon = $('#actIcon');
+  els.mainPad = $('#mainPad');
+  els.mainPad.innerHTML = padHTML('הבא', 'i-next');
+  els.kpMsg = document.createElement('p');
+  els.kpMsg.className = 'kp-msg';
+  els.kpMsg.hidden = true;
+  $('#kpSheet').prepend(els.kpMsg);
+  $('#xPad').innerHTML = padHTML('שמירה', 'i-check');
 
   addEventListener('popstate', route);
   addEventListener('hashchange', route);
@@ -826,7 +840,7 @@ function bind() {
     if (e.detail > 0 && shielded()) { e.stopImmediatePropagation(); e.preventDefault(); }
   }, true);
 
-  $('#tiles').addEventListener('click', (e) => {
+  $('#home').addEventListener('click', (e) => {
     const t = e.target.closest('.tile');
     if (!t || shielded()) return;
     wake.want = true;
@@ -834,52 +848,23 @@ function bind() {
     nav(t.dataset.go);
   });
 
+  // Tap a measurement to type; tap anywhere else in the display to close the keypad
   els.content.addEventListener('click', (e) => {
     if (shielded()) return;
-    const field = e.target.closest('.field');
-    if (field) { activate(field.dataset.f); return; }
-    const head = e.target.closest('.rhead');
-    if (head) { goType(head.dataset.go); return; }
-    const tab = e.target.closest('.tab');
-    if (tab && ui.mode === 'type') switchTab(tab.dataset.tab);
+    const inp = e.target.closest('.inp');
+    if (inp) { openField(inp.dataset.f); return; }
+    const tab = e.target.closest('[data-tab]');
+    if (tab) { switchTab(tab.dataset.tab); return; }
+    if (ui.keypad) closeKeypad();
   });
 
   $('#backBtn').addEventListener('click', goHome);
-  $('#editBtn').addEventListener('click', () => { if (!shielded()) goType(entryField()); });
-
-  // Keypad: a key fires when the finger lifts on (or within 16 px of) the key it touched; sliding farther cancels
-  const keypad = $('.keypad');
-  const downs = new Map();
-  const SLOP = 16;
-  let lastPtrPress = 0;
-  keypad.addEventListener('pointerdown', (e) => {
-    const key = e.target.closest('.key');
-    if (!key || shielded()) return;
-    try { key.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    downs.set(e.pointerId, key);
-    key.classList.add('down');
-  });
-  keypad.addEventListener('pointerup', (e) => {
-    const key = downs.get(e.pointerId);
-    if (!key) return;
-    downs.delete(e.pointerId);
-    key.classList.remove('down');
-    const r = key.getBoundingClientRect();
-    if (e.clientX >= r.left - SLOP && e.clientX <= r.right + SLOP && e.clientY >= r.top - SLOP && e.clientY <= r.bottom + SLOP) {
-      lastPtrPress = performance.now();
-      press(key.dataset.k);
-    }
-  });
-  keypad.addEventListener('pointercancel', (e) => {
-    const key = downs.get(e.pointerId);
-    if (key) { key.classList.remove('down'); downs.delete(e.pointerId); }
-  });
-  keypad.addEventListener('click', (e) => {
-    const key = e.target.closest('.key');
-    // keyboard / assistive technology activation (but not the extra click some screen readers send after a touch)
-    if (key && e.detail === 0 && performance.now() - lastPtrPress > 600) press(key.dataset.k);
-  });
-  keypad.addEventListener('contextmenu', (e) => e.preventDefault());
+  $('#editXBtn').addEventListener('click', openXSheet);
+  bindKeypad(els.mainPad, press);
+  bindKeypad($('#xPad'), xPress);
+  $('#xRows').addEventListener('click', (e) => { const r = e.target.closest('.xrow'); if (r) selectX(r.dataset.x); });
+  $('#xDim').addEventListener('click', cancelXSheet);
+  $('#xReset').addEventListener('click', resetXDrafts);
 
   // Physical keyboard
   document.addEventListener('keydown', (e) => {
@@ -898,10 +883,18 @@ function bind() {
     else if (e.key === 'ArrowDown') k = 'next';
     else if (e.key === 'ArrowUp') k = 'prev';
     if (!k) return;
-    if (ui.mode === 'read' && !/^[0-9.]$/.test(k)) return;
+    if (ui.sheet) {
+      e.preventDefault();
+      if (k === 'esc') cancelXSheet();
+      else if (k === 'next' || k === 'prev') {
+        const fs = xFields(); const i = Math.max(0, fs.indexOf(ui.xActive));
+        selectX(fs[(i + (k === 'next' ? 1 : -1) + fs.length) % fs.length]);
+      } else xPress(k);
+      return;
+    }
+    if (!ui.keypad && !/^[0-9.]$/.test(k)) return;
     e.preventDefault();
-    if (k === 'clear') { if (ui.active) { if (isX(ui.active)) ui.draft = ''; else { inputs()[ui.active] = ''; save(); } ui.fresh = false; ui.undo = null; update(); } }
-    else if (k === 'esc') escape();
+    if (k === 'esc') escape();
     else if (k === 'next') cycle(1);
     else if (k === 'prev') cycle(-1);
     else press(k);
@@ -914,27 +907,39 @@ function bind() {
     const a = b.dataset.act;
     if (a === 'install') doInstall();
     else if (a === 'share') shareApp();
-    else if (a === 'close') closeSheet();
+    else if (a === 'close') closePage();
   });
   // Any tap in a calculator keeps the screen awake (taps count as user gestures on iPhone)
   const keepAlive = () => { if (kind()) { armIdle(); lockOn(); } };
   document.addEventListener('pointerup', keepAlive, true);
   document.addEventListener('click', keepAlive, true);
 
-  $('#helpBtn').addEventListener('click', () => nav('help'));
+  $('#settingsBtn').addEventListener('click', () => nav('settings'));
   $('#laterBtn').addEventListener('click', () => { state.installCardHidden = true; save(); renderHome(); });
   $('#copyBtn').addEventListener('click', copyLink);
   $('#updateBtn').addEventListener('click', checkUpdates);
+  const seg = (id, key, after) => $('#' + id).addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    state[key] = b.dataset.v;
+    save();
+    if (after) after();
+    renderSettings();
+  });
+  seg('segTheme', 'theme', applyTheme);
+  seg('segRes', 'resOrder');
+  seg('segDim', 'dimOrder');
   $('#awakeSwitch').addEventListener('click', () => {
     state.keepAwake = !state.keepAwake;
     save();
     if (!state.keepAwake) lockOff();
-    renderHelp();
+    renderSettings();
   });
   const dlg = $('#resetDlg');
   $('#resetBtn').addEventListener('click', () => dlg.showModal());
   dlg.addEventListener('close', () => { if (dlg.returnValue === 'yes') doReset(); dlg.returnValue = ''; });
 
+  if (darkMQ.addEventListener) darkMQ.addEventListener('change', () => { if (state.theme === 'auto') applyTheme(); });
   addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (ui.route === 'install') renderInstall(); });
   addEventListener('appinstalled', () => { deferredPrompt = null; toast('המחשבון נוסף למסך הבית ✓'); renderHome(); });
 
@@ -949,14 +954,13 @@ function bind() {
   addEventListener('storage', (e) => {
     if (e.key !== STORE_KEY) return;
     state = load();
-    if (kind()) update();
-    else if (ui.route === 'help') renderHelp();
-    else if (ui.route === 'home') renderHome();
+    refreshScreen();
   });
 }
 
 // ---------- Start ----------
-if (location.hash) history.replaceState(null, '', location.pathname + location.search); // always open on Home
+if (location.hash || history.state) history.replaceState(null, '', location.pathname + location.search); // always open on Home
+applyTheme();
 bind();
 renderTiles();
 route();
