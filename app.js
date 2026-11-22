@@ -16,7 +16,9 @@ const SCREENS = {
   cornice: { kind: 'cornice', title: 'קרניז <bdi dir="ltr">K11/K10</bdi>', short: 'קרניז <small class="num">K11/K10</small>', icon: 'i-cornice', label: 'קרניז K11/K10' },
 };
 const isScreen = (name) => Object.prototype.hasOwnProperty.call(SCREENS, name);
-const PAGES = ['settings', 'install', 'share'];
+const PAGES = ['settings', 'install', 'share', 'accessibility', 'privacy', 'terms'];
+const LINKABLE = ['accessibility', 'privacy', 'terms']; // pages that may be opened straight from a link
+const APP_NAME = 'מחשבון מטבח';
 const FIELD_NAME = { h: 'גובה', w: 'רוחב', handle: 'מידת הידית', front: 'מידת החזית', len: 'אורך הארון' };
 const X_NAME = { xh: 'X לגובה', xw: 'X לרוחב', x: 'X לקרניז' };
 const TAB_NAME = { one: 'בולט צד אחד', two: 'בולט שני צדדים' };
@@ -40,6 +42,8 @@ function freshState() {
     theme: 'auto',       // auto | mint | night
     resOrder: 'plus',    // plus | minus  (which result is on top)
     dimOrder: 'hw',      // hw | wh       (height or width first)
+    textSize: 'n',       // n | l | xl    (accessibility menu)
+    contrast: false,     // high contrast (accessibility menu)
   };
 }
 
@@ -71,6 +75,8 @@ function load() {
   if (['auto', 'mint', 'night'].includes(d.theme)) s.theme = d.theme;
   if (['plus', 'minus'].includes(d.resOrder)) s.resOrder = d.resOrder;
   if (['hw', 'wh'].includes(d.dimOrder)) s.dimOrder = d.dimOrder;
+  if (['n', 'l', 'xl'].includes(d.textSize)) s.textSize = d.textSize;
+  if (typeof d.contrast === 'boolean') s.contrast = d.contrast;
   return s;
 }
 
@@ -86,6 +92,7 @@ const ui = {
   route: '', active: null, fresh: false, before: '', keypad: false,
   sheet: false, xActive: null, xFresh: false, xDraft: {}, xOrigin: {},
   inAppNav: false, shieldUntil: 0, msgTimer: 0,
+  forward: false, focusBack: {}, booted: false,
 };
 const els = {};
 const kind = () => (isScreen(ui.route) ? SCREENS[ui.route].kind : null);
@@ -129,6 +136,12 @@ function applyTheme() {
   document.documentElement.setAttribute('data-theme', t);
   $('#themeColor').setAttribute('content', t === 'night' ? '#0D0F12' : '#F6F7F9');
 }
+// Accessibility menu: text size and high contrast (both can be switched back at any time)
+function applyA11y() {
+  const r = document.documentElement;
+  if (state.textSize === 'l' || state.textSize === 'xl') r.setAttribute('data-fs', state.textSize); else r.removeAttribute('data-fs');
+  if (state.contrast) r.setAttribute('data-contrast', 'high'); else r.removeAttribute('data-contrast');
+}
 
 // ---------- Calculator markup (built once per visit, then updated in place) ----------
 const inpHTML = (f) => `<button type="button" class="inp" data-f="${f}"><span class="num"><span class="val"></span><span class="caret"></span></span><span class="ph">הקלידו</span></button>`;
@@ -140,8 +153,8 @@ function outletHTML() {
     return `<section class="block" data-d="${d}">
       <div class="blk-top"><span class="lbl">${word}</span>${inpHTML(d)}</div>
       <div class="results">
-        <div class="res" data-r="${d}Plus"><span class="sg p" aria-hidden="true">+</span>${fitHTML}</div>
-        <div class="res" data-r="${d}Minus"><span class="sg m" aria-hidden="true">−</span>${fitHTML}</div>
+        <div class="res" data-r="${d}Plus"><span class="sg p" aria-hidden="true">+</span><span class="sr">${word} ועוד X:</span>${fitHTML}</div>
+        <div class="res" data-r="${d}Minus"><span class="sg m" aria-hidden="true">−</span><span class="sr">${word} פחות X:</span>${fitHTML}</div>
       </div>
       <p class="blk-note" data-note="${d}" hidden></p>
     </section>`;
@@ -234,13 +247,39 @@ function update() {
     note('x', X === '' ? NOTE_MISSING_X : '');
   }
   els.body.style.setProperty('--w', Math.max(...longest.map(emWidth)).toFixed(2));
-  $('.edot', els.calc).hidden = !needsX();
+  const missing = needsX();
+  $('.edot', els.calc).hidden = !missing;
+  $('#editXBtn').setAttribute('aria-label', missing ? 'עריכת ערכי X – חסר ערך' : 'עריכת ערכי X');
   // action key: "הבא" while another field follows, otherwise it hides the keypad
   const o = order();
   const i = o.indexOf(ui.active);
   const next = i >= 0 && i < o.length - 1;
   $('.act-l', els.mainPad).textContent = next ? 'הבא' : 'סגירה';
   $('.act-i', els.mainPad).setAttribute('href', next ? '#i-next' : '#i-hide');
+}
+
+// ---------- Screen reader: read the results shortly after typing ----------
+let liveTimer = 0;
+function say(text) {
+  clearTimeout(liveTimer);
+  const el = $('#live');
+  el.textContent = '';
+  if (text) liveTimer = setTimeout(() => { el.textContent = text; }, 60);
+}
+function announceSoon() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => say(resultText()), 900);
+}
+function resultText() {
+  if (!kind() || !els.body) return '';
+  let scope = els.body;
+  if (kind() === 'outlet') scope = $(`.block[data-d="${ui.active === 'w' ? 'w' : 'h'}"]`, els.body);
+  let list = $$('.res', scope);
+  if (kind() === 'outlet' && state.resOrder === 'minus') list = list.reverse();
+  const parts = list.filter((r) => !r.classList.contains('is-empty'))
+    .map((r) => `${($('.sr', r) || $('.cap', r)).textContent.replace(/:$/, '')} ${$('.big', r).textContent}`);
+  const notes = $$('.blk-note', scope).filter((n) => !n.hidden).map((n) => n.textContent.trim());
+  return parts.concat(notes).join('. ');
 }
 
 // ---------- Field logic (the overwrite rule) ----------
@@ -250,6 +289,12 @@ function activate(f) {
   ui.active = f;
   ui.fresh = true;         // selected: nothing changes until a key is typed
   update();
+  // keyboard and screen reader users: focus follows the field being typed
+  const cur = document.activeElement;
+  if (cur && cur.classList.contains('inp') && cur.dataset.f !== f) {
+    const nb = $(`.inp[data-f="${f}"]`, els.body);
+    if (nb) nb.focus({ preventScroll: true });
+  }
 }
 
 function commit(f) {
@@ -290,7 +335,7 @@ function showKpMsg(msg) {
   clearTimeout(ui.msgTimer);
   el.textContent = msg;
   el.hidden = !msg;
-  if (msg) ui.msgTimer = setTimeout(() => { el.hidden = true; }, 2000);
+  if (msg) { say(msg); ui.msgTimer = setTimeout(() => { el.hidden = true; }, 2000); }
 }
 
 function shake(el) {
@@ -313,7 +358,7 @@ function press(k) {
   }
   if (k === 'act') { action(); return; }
   const f = ui.active;
-  if (k === 'clear') { inputs()[f] = ''; save(); ui.fresh = false; update(); return; }
+  if (k === 'clear') { inputs()[f] = ''; save(); ui.fresh = false; update(); announceSoon(); return; }
   const r = pressKey(inputs()[f], ui.fresh, k, LIMITS);
   if (r.reject) {
     if (r.reject !== 'dot') { shake($(`.inp[data-f="${f}"]`, els.body)); showKpMsg(rejectText(r.reject)); }
@@ -323,6 +368,7 @@ function press(k) {
   save();
   ui.fresh = r.fresh;
   update();
+  announceSoon();
 }
 
 function action() {
@@ -349,6 +395,7 @@ function switchTab(t) {
   save();
   update();
   flashResult();
+  announceSoon();
 }
 
 function flashResult() {
@@ -380,23 +427,30 @@ function openXSheet() {
   else history.pushState({ sheet: 'x' }, '');
   hideToast();
   $('#xTitle').textContent = 'ערכי X · ' + plain(SCREENS[ui.route].title);
+  $('#xRows').innerHTML = fs.map((f) => `<button type="button" class="xrow" data-x="${f}"><span class="t">${X_NAME[f]}</span><span class="num"><span class="val"></span><span class="caret"></span></span><span class="ph">הקלידו</span></button>`).join('');
   $('#xOverlay').hidden = false;
+  $('#app').inert = true; // a real dialog: the screen behind cannot be reached
   renderXSheet();
   update();
+  const row = $('#xRows .xrow.is-active');
+  if (row) row.focus({ preventScroll: true });
   shield(); // a double tap on ✎ must not land on the dim layer
 }
 
 function renderXSheet() {
-  const rows = xFields().map((f) => {
+  for (const row of $$('#xRows .xrow')) {
+    const f = row.dataset.x;
     const v = ui.xDraft[f];
-    const cls = ['xrow',
-      ui.xActive === f ? 'is-active' : '',
-      ui.xActive === f && ui.xFresh && v !== '' ? 'is-fresh' : '',
-      v === '' ? 'is-empty' : '',
-      v !== xDefault(xKeyOf(f)) ? 'is-changed' : ''].join(' ');
-    return `<button type="button" class="${cls}" data-x="${f}" aria-label="${X_NAME[f]}: ${v || 'ריק'}"><span class="t">${X_NAME[f]}</span><span class="num"><span class="val">${v}</span><span class="caret"></span></span><span class="ph">הקלידו</span></button>`;
-  });
-  $('#xRows').innerHTML = rows.join('');
+    const active = ui.xActive === f;
+    const changed = v !== xDefault(xKeyOf(f));
+    row.classList.toggle('is-active', active);
+    row.classList.toggle('is-fresh', active && ui.xFresh && v !== '');
+    row.classList.toggle('is-empty', v === '');
+    row.classList.toggle('is-changed', changed);
+    $('.val', row).textContent = v;
+    row.setAttribute('aria-label', `${X_NAME[f]}: ${v || 'ריק'}${changed ? ' (שונה מהמקור)' : ''}`);
+    if (active) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
+  }
   const resettable = xFields().some((f) => xDefault(xKeyOf(f)) !== '' && tidy(ui.xDraft[f]) !== xDefault(xKeyOf(f)));
   $('#xReset').hidden = !resettable;
 }
@@ -406,7 +460,7 @@ function xHint(msg) {
   clearTimeout(ui.msgTimer);
   h.classList.toggle('err', !!msg);
   h.textContent = msg || 'נשמר בטלפון עד שמשנים שוב';
-  if (msg) ui.msgTimer = setTimeout(() => xHint(''), 2000);
+  if (msg) { say(msg); ui.msgTimer = setTimeout(() => xHint(''), 2000); }
 }
 
 function xPress(k) {
@@ -426,13 +480,27 @@ function xPress(k) {
   update(); // results behind the sheet follow the draft
 }
 
-function selectX(f) { ui.xActive = f; ui.xFresh = true; renderXSheet(); }
+function selectX(f, focus) {
+  ui.xActive = f; ui.xFresh = true; renderXSheet();
+  if (focus) { const r = $(`#xRows .xrow[data-x="${f}"]`); if (r) r.focus({ preventScroll: true }); }
+}
 
 function resetXDrafts() {
+  const hadFocus = document.activeElement === $('#xReset');
   for (const f of xFields()) { const d = xDefault(xKeyOf(f)); if (d !== '') ui.xDraft[f] = d; }
   ui.xFresh = true;
   renderXSheet();
   update();
+  if (hadFocus) { const r = $('#xRows .xrow.is-active'); if (r) r.focus({ preventScroll: true }); } // the reset link hides itself
+}
+
+// Tab stays inside the X window: cancel, the X rows, reset
+function trapTab(e) {
+  const items = $$('#xSheet button').filter((b) => !b.closest('#xPad') && !b.hidden);
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  const n = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i < 0 || i === items.length - 1 ? 0 : i + 1);
+  items[n].focus({ preventScroll: true });
 }
 
 function saveXSheet() {
@@ -459,8 +527,11 @@ function closeXSheet({ fromPop = false } = {}) {
   ui.sheet = false;
   ui.xDraft = {}; ui.xOrigin = {}; ui.xActive = null;
   $('#xOverlay').hidden = true;
+  $('#app').inert = false;
   xHint('');
   if (!fromPop && history.state && history.state.sheet) history.back();
+  const edit = $('#editXBtn');
+  if (!els.calc.hidden && !edit.hidden) edit.focus({ preventScroll: true }); // focus goes back to ✎
   shield(); // a double tap on "שמירה" must not land on the screen behind
 }
 
@@ -519,11 +590,39 @@ function route() {
   else if (target === 'settings') renderSettings();
   else if (target === 'install') renderInstall();
   else if (target === 'share') renderShare();
+  document.title = target === 'home' ? APP_NAME : `${screenName(target)} · ${APP_NAME}`;
+  const forward = ui.forward;
+  ui.forward = false;
   const c = $(`#${target} .content`);
-  if (c) c.scrollTop = 0;
+  if (c && (forward || !ui.booted)) c.scrollTop = 0;
+  if (ui.booted) focusScreen(target, prev);
 }
 
-function nav(name) { ui.inAppNav = true; shield(); location.hash = '#/' + name; }
+function screenName(name) {
+  if (isScreen(name)) return plain(SCREENS[name].title);
+  const t = $(`#${name} .title`);
+  return t ? t.textContent : '';
+}
+
+// After a screen change, focus goes to where the user came from, or to the new screen's title
+function focusScreen(target, prev) {
+  let el = ui.focusBack[target];
+  ui.focusBack[target] = null;
+  if (!el || el === document.body || !el.isConnected || el.closest('[hidden]')) {
+    el = (target === 'home' && ($(`#home .tile[data-go="${prev}"]`) || (prev === 'settings' && $('#settingsBtn'))))
+      || (target === 'settings' && $(`#settings [data-nav="${prev}"]`))
+      || $(`#${isScreen(target) ? 'calc' : target} h1`);
+  }
+  if (el) el.focus();
+}
+
+function nav(name) {
+  ui.focusBack[ui.route] = document.activeElement;
+  ui.forward = true;
+  ui.inAppNav = true;
+  shield();
+  location.hash = '#/' + name;
+}
 
 function goHome() {
   shield();
@@ -581,6 +680,8 @@ function renderSettings() {
   setSeg('segTheme', state.theme);
   setSeg('segRes', state.resOrder);
   setSeg('segDim', state.dimOrder);
+  setSeg('segText', state.textSize);
+  $('#contrastSwitch').setAttribute('aria-checked', String(state.contrast));
   const standalone = isStandalone();
   $('#setInstalled').hidden = !standalone;
   $('#setInstallBtn').hidden = standalone;
@@ -706,6 +807,7 @@ function toast(text, undoFn, ms) {
 function hideToast() { $('#toast').hidden = true; clearTimeout(toastTimer); }
 function refreshScreen() {
   applyTheme();
+  applyA11y();
   if (kind()) update();
   else if (ui.route === 'home') renderHome();
   else if (ui.route === 'settings') renderSettings();
@@ -831,6 +933,7 @@ function bind() {
   els.kpMsg.hidden = true;
   $('#kpSheet').prepend(els.kpMsg);
   $('#xPad').innerHTML = padHTML('שמירה', 'i-check');
+  for (const h of $$('#app h1')) h.tabIndex = -1; // focus target after a screen change
 
   addEventListener('popstate', route);
   addEventListener('hashchange', route);
@@ -863,11 +966,14 @@ function bind() {
   bindKeypad(els.mainPad, press);
   bindKeypad($('#xPad'), xPress);
   $('#xRows').addEventListener('click', (e) => { const r = e.target.closest('.xrow'); if (r) selectX(r.dataset.x); });
+  $('#xRows').addEventListener('focusin', (e) => { const r = e.target.closest('.xrow'); if (r && r.dataset.x !== ui.xActive) selectX(r.dataset.x); });
   $('#xDim').addEventListener('click', cancelXSheet);
+  $('#xCancel').addEventListener('click', cancelXSheet);
   $('#xReset').addEventListener('click', resetXDrafts);
 
   // Physical keyboard
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && PAGES.includes(ui.route) && !$('#resetDlg').open) { e.preventDefault(); closePage(); return; }
     if (!kind() || $('#resetDlg').open || e.ctrlKey || e.metaKey || e.altKey) return;
     const c = e.code || '';
     let k = null;
@@ -884,11 +990,13 @@ function bind() {
     else if (e.key === 'ArrowUp') k = 'prev';
     if (!k) return;
     if (ui.sheet) {
+      if (k === 'act' && e.target.closest && e.target.closest('#xCancel, #xReset')) return; // Enter on those buttons does what they say
       e.preventDefault();
       if (k === 'esc') cancelXSheet();
+      else if (e.key === 'Tab') trapTab(e);
       else if (k === 'next' || k === 'prev') {
         const fs = xFields(); const i = Math.max(0, fs.indexOf(ui.xActive));
-        selectX(fs[(i + (k === 'next' ? 1 : -1) + fs.length) % fs.length]);
+        selectX(fs[(i + (k === 'next' ? 1 : -1) + fs.length) % fs.length], true);
       } else xPress(k);
       return;
     }
@@ -902,6 +1010,8 @@ function bind() {
 
   // Buttons with data-act anywhere
   document.addEventListener('click', (e) => {
+    const n = e.target.closest('[data-nav]');
+    if (n) { nav(n.dataset.nav); return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
@@ -929,6 +1039,13 @@ function bind() {
   seg('segTheme', 'theme', applyTheme);
   seg('segRes', 'resOrder');
   seg('segDim', 'dimOrder');
+  seg('segText', 'textSize', applyA11y);
+  $('#contrastSwitch').addEventListener('click', () => {
+    state.contrast = !state.contrast;
+    save();
+    applyA11y();
+    renderSettings();
+  });
   $('#awakeSwitch').addEventListener('click', () => {
     state.keepAwake = !state.keepAwake;
     save();
@@ -959,9 +1076,15 @@ function bind() {
 }
 
 // ---------- Start ----------
-if (location.hash || history.state) history.replaceState(null, '', location.pathname + location.search); // always open on Home
+{
+  const h = location.hash.replace(/^#\/?/, '');
+  if (LINKABLE.includes(h)) history.replaceState(null, '', location.pathname + location.search + '#/' + h); // a direct link to a legal page
+  else if (location.hash || history.state) history.replaceState(null, '', location.pathname + location.search); // otherwise always open on Home
+}
 applyTheme();
+applyA11y();
 bind();
 renderTiles();
 route();
+ui.booted = true;
 registerSW();

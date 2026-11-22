@@ -12,9 +12,12 @@
   (function () {
     try {
       var k = 'kitchenCalc:' + new URL('./', location.href).pathname + ':v1';
-      var t = (JSON.parse(localStorage.getItem(k) || '{}') || {}).theme;
+      var s = JSON.parse(localStorage.getItem(k) || '{}') || {};
+      var t = s.theme;
       if (t !== 'mint' && t !== 'night') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'mint';
       document.documentElement.setAttribute('data-theme', t);
+      if (s.textSize === 'l' || s.textSize === 'xl') document.documentElement.setAttribute('data-fs', s.textSize);
+      if (s.contrast === true) document.documentElement.setAttribute('data-contrast', 'high');
       document.getElementById('themeColor').setAttribute('content', t === 'night' ? '#0D0F12' : '#F6F7F9');
     } catch (e) { /* keep the default theme */ }
   })();
@@ -67,11 +70,11 @@
 <div id="app">
   <!-- HOME -->
   <section id="home" class="screen home" hidden>
-    <header class="home-hdr">
+    <header class="home-hdr" role="banner">
       <h1>מחשבון מטבח</h1>
       <div class="hdr-icons">
         <button type="button" class="ibtn" data-act="share" aria-label="שיתוף עם חבר"><svg><use href="#i-share"/></svg></button>
-        <button type="button" class="ibtn" id="settingsBtn" aria-label="הגדרות ועזרה"><svg><use href="#i-gear"/></svg></button>
+        <button type="button" class="ibtn" id="settingsBtn" aria-label="הגדרות, נגישות ועזרה"><svg><use href="#i-gear"/></svg></button>
       </div>
     </header>
     <main class="content home-content">
@@ -81,17 +84,17 @@
       <p class="sec">ארונות</p>
       <nav class="tiles grid2" id="tilesCabinets" aria-label="ארונות"></nav>
     </main>
-    <footer class="install-bar" id="installCard" hidden>
+    <aside class="install-bar" id="installCard" aria-label="הוספה למסך הבית" hidden>
       <svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg>
       <span class="ib-text">כדאי להוסיף למסך הבית</span>
       <button type="button" class="chip-btn" data-act="install">הוספה</button>
       <button type="button" class="ibtn sm" id="laterBtn" aria-label="לא עכשיו"><svg><use href="#i-close"/></svg></button>
-    </footer>
+    </aside>
   </section>
 
   <!-- CALCULATOR -->
   <section id="calc" class="screen calc" hidden>
-    <header class="hdr">
+    <header class="hdr" role="banner">
       <button type="button" class="ibtn" id="backBtn" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
       <h1 class="title" id="calcTitle"></h1>
       <button type="button" class="ibtn soft" id="editXBtn" aria-label="עריכת ערכי X"><svg><use href="#i-edit"/></svg><i class="edot" hidden></i></button>
@@ -104,7 +107,7 @@
 
   <!-- SETTINGS + HELP -->
   <section id="settings" class="screen page" hidden>
-    <header class="hdr">
+    <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
       <h1 class="title">הגדרות ועזרה</h1>
       <span class="ibtn-space"></span>
@@ -148,13 +151,28 @@
         <button type="button" class="set-row link" id="updateBtn"><span>בדיקת עדכונים</span></button>
         <button type="button" class="set-row link danger" id="resetBtn"><span>איפוס הכול</span></button>
       </div>
+
+      <p class="sec">נגישות ומידע</p>
+      <div class="group">
+        <div class="set-row stack"><span id="textSizeLbl">גודל טקסט</span>
+          <div class="seg" id="segText" role="radiogroup" aria-labelledby="textSizeLbl">
+            <button type="button" data-v="n" role="radio">רגיל</button><button type="button" data-v="l" role="radio">גדול</button><button type="button" data-v="xl" role="radio">גדול מאוד</button>
+          </div></div>
+        <button type="button" class="set-row switch" id="contrastSwitch" role="switch" aria-checked="false"><span>ניגודיות גבוהה</span><span class="sw" aria-hidden="true"><i></i></span></button>
+        <nav class="set-row legal-links" aria-label="מידע משפטי">
+          <button type="button" data-nav="accessibility">הצהרת נגישות</button><span aria-hidden="true">·</span>
+          <button type="button" data-nav="privacy">מדיניות פרטיות</button><span aria-hidden="true">·</span>
+          <button type="button" data-nav="terms">תנאי שימוש</button>
+        </nav>
+      </div>
       <p class="version" id="versionLine"></p>
+      <p class="copy" dir="ltr">© 2026 mNm services</p>
     </main>
   </section>
 
   <!-- INSTALL -->
   <section id="install" class="screen page" hidden>
-    <header class="hdr">
+    <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
       <h1 class="title">הוספה למסך הבית</h1>
       <span class="ibtn-space"></span>
@@ -164,7 +182,7 @@
 
   <!-- SHARE (fallback when the phone has no share menu) -->
   <section id="share" class="screen page" hidden>
-    <header class="hdr">
+    <header class="hdr" role="banner">
       <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
       <h1 class="title">שיתוף עם חבר</h1>
       <span class="ibtn-space"></span>
@@ -176,14 +194,119 @@
       <p class="share-url" dir="ltr" id="shareUrl"></p>
     </main>
   </section>
+
+  <!-- ACCESSIBILITY STATEMENT -->
+  <section id="accessibility" class="screen page" hidden>
+    <header class="hdr" role="banner">
+      <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
+      <h1 class="title">הצהרת נגישות</h1>
+      <span class="ibtn-space"></span>
+    </header>
+    <main class="content page-content legal">
+      <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
+      <p class="legal-intro">ההצהרה נכתבה לפי חוק שוויון זכויות לאנשים עם מוגבלות, התשנ״ח-1998, ותקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע״ג-2013.</p>
+      <h2>1. מחויבות לנגישות</h2>
+      <p>mNm services מחויבת לאפשר שימוש נגיש ב״מחשבון מטבח״ לכל המשתמשים, כולל אנשים עם מוגבלות. היעד הוא תקן ישראלי 5568 ברמה AA, המבוסס על הנחיות WCAG 2.1.</p>
+      <h2>2. רמת ההתאמה</h2>
+      <p>המחשבון עומד בבדיקות שמפורטות בסעיף 6. חלק מהבדיקות עדיין לא בוצעו (סעיף 5), ולכן ההתאמה לרמה AA מוגדרת כחלקית.</p>
+      <h2>3. מה הונגש</h2>
+      <ul>
+        <li>ממשק בעברית מימין לשמאל, ומספרים וסימני חיבור וחיסור שמוצגים תמיד נכון.</li>
+        <li>ניגודיות צבעים של 4.5:1 לפחות לטקסט, בערכה הבהירה ובערכה הכהה.</li>
+        <li>תפריט נגישות בהגדרות: הגדלת טקסט בשתי רמות וניגודיות גבוהה.</li>
+        <li>אפשר להגדיל את התצוגה בצביטה ובהגדרות הדפדפן, והתצוגה מתאימה את עצמה לכל רוחב מסך.</li>
+        <li>שימוש מלא במקלדת: הקלדת מספרים, Enter למעבר, Tab בין שדות ו-Esc לסגירה.</li>
+        <li>תוויות לקורא מסך לכל כפתור ושדה, והקראה של התוצאות אחרי הקלדה.</li>
+        <li>חלון עריכת X עם מיקוד נכון, כפתור ביטול וסגירה ב-Esc.</li>
+        <li>המידע לא מועבר בצבע בלבד: + ו-− מסומנים גם בסימן ובתווית.</li>
+        <li>כיבוד הגדרת ״הפחתת תנועה״ של הטלפון, וערכה כהה לפי בחירה.</li>
+      </ul>
+      <h2>4. טכנולוגיות</h2>
+      <p>HTML, CSS ו-JavaScript עם תכונות WAI-ARIA. המחשבון נבדק בדפדפן Chromium, שעליו מבוסס Chrome.</p>
+      <h2>5. מגבלות ידועות</h2>
+      <ul>
+        <li>עדיין לא בוצעה בדיקה עם קורא מסך אמיתי (VoiceOver באייפון ו-TalkBack באנדרואיד).</li>
+        <li>מקשי המקלדת שעל המסך לא נכללים בסדר המעבר ב-Tab. במחשב מקלידים ישירות מהמקלדת.</li>
+      </ul>
+      <h2>6. בדיקות נגישות</h2>
+      <p>הנגישות נבדקה בסריקות אוטומטיות (axe-core) בכל המסכים, בשתי הערכות, בניגודיות גבוהה ובטקסט מוגדל, וגם בבדיקות ניגודיות צבעים, בבדיקות שימוש במקלדת ובבדיקות תצוגה ברוחב 260 עד 1280 פיקסלים.</p>
+      <h2>7. פנייה בנושא נגישות</h2>
+      <p>נתקלתם בבעיית נגישות? נשמח לשמוע ולטפל. רכז הנגישות: Noam Mamos, mNm services. אפשר לפנות דרך דף המאגר:
+        <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.
+        נטפל בפנייה בתוך 5 ימי עבודה.</p>
+      <h2>8. תאריך ההצהרה</h2>
+      <p>ההצהרה פורסמה ב-22.11.2026, ותעודכן בכל שינוי מהותי בממשק.</p>
+    </main>
+  </section>
+
+  <!-- PRIVACY POLICY -->
+  <section id="privacy" class="screen page" hidden>
+    <header class="hdr" role="banner">
+      <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
+      <h1 class="title">מדיניות פרטיות</h1>
+      <span class="ibtn-space"></span>
+    </header>
+    <main class="content page-content legal">
+      <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
+      <p class="legal-intro">המדיניות נכתבה לפי חוק הגנת הפרטיות, התשמ״א-1981. בקיצור: המחשבון לא אוסף עליכם שום מידע.</p>
+      <h2>1. מי מפעיל את המחשבון</h2>
+      <p>״מחשבון מטבח״ פותח ומופעל על ידי mNm services.</p>
+      <h2>2. מה נאסף</h2>
+      <p>שום מידע אישי. אין הרשמה, ולא נאספים שם, טלפון, מייל או מיקום.</p>
+      <h2>3. מה נשמר בטלפון שלכם</h2>
+      <p>המספרים שהקלדתם, ערכי X ששיניתם וההגדרות נשמרים רק בזיכרון של הדפדפן בטלפון שלכם (localStorage), כדי שיופיעו בפעם הבאה. הם לא נשלחים לשום מקום. ״איפוס הכול״ בהגדרות, או מחיקת נתוני האתר בדפדפן, מוחקים אותם.</p>
+      <h2>4. עוגיות ומעקב</h2>
+      <p>אין עוגיות, אין פרסומות ואין כלי ניתוח או מעקב.</p>
+      <h2>5. אחסון האתר</h2>
+      <p>קבצי האתר מאוחסנים בשירות GitHub Pages. כמו כל שרת אינטרנט, GitHub עשויה לרשום נתוני גישה טכניים (למשל כתובת IP) לפי מדיניות הפרטיות שלה. הנתונים האלה לא מגיעים אלינו.</p>
+      <h2>6. שיתוף</h2>
+      <p>כפתור השיתוף פותח את תפריט השיתוף של הטלפון או קישור לוואטסאפ. נשלח רק הקישור למחשבון, ורק כשאתם בוחרים לשתף.</p>
+      <h2>7. אבטחה</h2>
+      <p>האתר מוגש בחיבור מוצפן (HTTPS).</p>
+      <h2>8. הזכויות שלכם</h2>
+      <p>מאחר שלא נאסף עליכם מידע, אין אצלנו מידע לעיון, לתיקון או למחיקה. המידע שבטלפון נמצא בשליטתכם המלאה.</p>
+      <h2>9. פנייה</h2>
+      <p>שאלות על המדיניות: Noam Mamos, mNm services, דרך דף המאגר
+        <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.
+        אפשר גם להגיש תלונה לרשות להגנת הפרטיות.</p>
+    </main>
+  </section>
+
+  <!-- TERMS OF USE -->
+  <section id="terms" class="screen page" hidden>
+    <header class="hdr" role="banner">
+      <button type="button" class="ibtn" data-act="close" aria-label="חזרה"><svg><use href="#i-back"/></svg></button>
+      <h1 class="title">תנאי שימוש</h1>
+      <span class="ibtn-space"></span>
+    </header>
+    <main class="content page-content legal">
+      <p class="legal-date">עודכן לאחרונה: 22.11.2026</p>
+      <p class="legal-intro">השימוש ב״מחשבון מטבח״ כפוף לתנאים האלה. עצם השימוש במחשבון הוא הסכמה להם.</p>
+      <h2>1. מטרת המחשבון</h2>
+      <p>כלי עזר לחישוב מידות למתקיני מטבחים: שקעים, ידיות וקרניז. השימוש חינם.</p>
+      <h2>2. האחריות שלכם</h2>
+      <p>התוצאות תלויות במידות ובערכי X שהוזנו. לפני כל חיתוך או קידוח, בדקו את המידות, את ערכי X ואת התוצאה, ואל תסתמכו על המחשבון בלבד.</p>
+      <h2>3. הגבלת אחריות</h2>
+      <p>המחשבון ניתן כמו שהוא (AS IS), בלי התחייבות מכל סוג. mNm services ומפתחי המחשבון לא אחראים לשום נזק ישיר, עקיף או תוצאתי שנובע מהשימוש בו או מחוסר היכולת להשתמש בו, כולל טעות בחישוב, הזנה שגויה, חיתוך או קידוח שגויים ונזק לחומרים.</p>
+      <h2>4. זמינות ושינויים</h2>
+      <p>אין התחייבות לזמינות רציפה ומלאה. המחשבון והתנאים עשויים להשתנות מעת לעת, והנוסח העדכני מופיע כאן.</p>
+      <h2>5. קניין רוחני</h2>
+      <p>כל הזכויות בקוד, בעיצוב ובלוגו שמורות ל-mNm services.</p>
+      <h2>6. דין חל</h2>
+      <p>התנאים כפופים לדין הישראלי, וסמכות השיפוט לבתי המשפט המוסמכים בישראל.</p>
+      <h2>7. יצירת קשר</h2>
+      <p>Noam Mamos, mNm services, דרך דף המאגר
+        <a class="legal-link" href="https://github.com/mamosnoam/kitchen-calc/issues" target="_blank" rel="noopener"><span class="num">github.com/mamosnoam/kitchen-calc/issues</span></a>.</p>
+    </main>
+  </section>
 </div>
 
 <!-- X editor (bottom sheet) -->
 <div class="overlay" id="xOverlay" hidden>
   <div class="dim" id="xDim"></div>
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
+  <div class="sheet" id="xSheet" role="dialog" aria-modal="true" aria-labelledby="xTitle" tabindex="-1">
     <div class="grab" aria-hidden="true"></div>
-    <h2 id="xTitle">ערכי X</h2>
+    <div class="sheet-hdr"><button type="button" class="link-btn" id="xCancel">ביטול</button><h2 id="xTitle">ערכי X</h2><span class="sheet-sp"></span></div>
     <p class="hint" id="xHint">נשמר בטלפון עד שמשנים שוב</p>
     <div id="xRows"></div>
     <button type="button" class="link-btn" id="xReset">↺ חזרה לערכים המקוריים</button>
@@ -200,6 +323,7 @@
   </form>
 </dialog>
 
+<div class="sr" id="live" aria-live="polite" aria-atomic="true"></div>
 <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" class="toast-btn" id="toastBtn" hidden>ביטול</button></div>
 </body>
 </html>
